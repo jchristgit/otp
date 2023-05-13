@@ -787,7 +787,8 @@ do_send_table(Pid, Tab, Storage, RemoteS, LoadReason) ->
             NeedLock = need_lock(Tab, LoadReason),
             case prepare_copy(Pid, Tab, Storage, NeedLock) of
                 {atomic, ok} ->
-                    send_more(Pid, 1, Chunk, Init(), Tab, Storage),
+                    FormatChunk = chunk_formatter(compression_level()),
+                    send_more(Pid, 1, Chunk, Init(), Tab, Storage, FormatChunk),
                     finish_copy(Pid, Tab, Storage, RemoteS, NeedLock);
                 Error ->
                     Error
@@ -810,6 +811,9 @@ do_send_table(Pid, Tab, Storage, RemoteS, LoadReason) ->
     after
         unlink(whereis(mnesia_tm))
     end.
+
+chunk_formatter(0) -> fun(Recs) -> {more, Recs} end;
+chunk_formatter(Level) -> fun(Recs) -> {more_z, zlib_compress(Recs, Level)} end.
 
 prepare_copy(Pid, Tab, Storage, NeedLock) ->
     Trans =
@@ -866,32 +870,32 @@ update_where_to_write([H|T], Tab, AddNode) ->
 	     [{update_where_to_write, [add, Tab, AddNode], self()}]),
     update_where_to_write(T, Tab, AddNode).
 
-send_more(Pid, N, Chunk, DataState, Tab, Storage) ->
+send_more(Pid, N, Chunk, DataState, Tab, Storage, ChunkFormatter) ->
     receive
 	{NewPid, more} ->
-	    case send_packet(N - 1, NewPid, Chunk, DataState) of
+	    case send_packet(N - 1, NewPid, Chunk, DataState, ChunkFormatter) of
 		New when is_integer(New) ->
 		    New - 1;
 		NewData ->
 		    send_more(NewPid, ?MAX_NOPACKETS, Chunk, NewData,
-			      Tab, Storage)
+			      Tab, Storage, ChunkFormatter)
 	    end;
 	{NewPid, {more, Msg}} when element(1, Storage) == ext ->
 	    {ext, Alias, Mod} = Storage,
 	    {NewChunk, NewState} =
 		Mod:sender_handle_info(Msg, Alias, Tab, NewPid, DataState),
-	    case send_packet(N - 1, NewPid, NewChunk, NewState) of
+	    case send_packet(N - 1, NewPid, NewChunk, NewState, ChunkFormatter) of
 		New when is_integer(New) ->
 		    New -1;
 		NewData ->
 		    send_more(NewPid, N, NewChunk, NewData, Tab,
-			      Storage)
+			      Storage, ChunkFormatter)
 	    end;
 	{_NewPid, {old_protocol, Tab}} ->
 	    Storage =  val({Tab, storage_type}),
 	    {Init, NewChunk} =
 		reader_funcs(false, Tab, Storage, calc_nokeys(Storage, Tab)),
-	    send_more(Pid, 1, NewChunk, Init(), Tab, Storage);
+	    send_more(Pid, 1, NewChunk, Init(), Tab, Storage, ChunkFormatter);
 
 	{copier_done, Node} when Node == node(Pid)->
 	    verbose("Receiver of table ~tp crashed on ~p (more)~n", [Tab, Node]),
@@ -987,20 +991,15 @@ compression_level() ->
 	Val -> Val
     end.
 
-send_packet(N, Pid, _Chunk, '$end_of_table') ->
+send_packet(N, Pid, _Chunk, '$end_of_table', _ChunkFormatter) ->
     Pid ! {self(), no_more},
     N;
-send_packet(N, Pid, Chunk, {[], Cont}) ->
-    send_packet(N, Pid, Chunk, Chunk(Cont));
-send_packet(N, Pid, Chunk, {Recs, Cont}) when N < ?MAX_NOPACKETS ->
-    case compression_level() of
-	0 ->
-	    Pid ! {self(), {more, Recs}};
-	Level ->
-	    Pid ! {self(), {more_z, zlib_compress(Recs, Level)}}
-    end,
-    send_packet(N+1, Pid, Chunk, Chunk(Cont));
-send_packet(_N, _Pid, _Chunk, DataState) ->
+send_packet(N, Pid, Chunk, {[], Cont}, ChunkFormatter) ->
+    send_packet(N, Pid, Chunk, Chunk(Cont), ChunkFormatter);
+send_packet(N, Pid, Chunk, {Recs, Cont}, ChunkFormatter) when N < ?MAX_NOPACKETS ->
+    Pid ! ChunkFormatter(Recs),
+    send_packet(N+1, Pid, Chunk, Chunk(Cont), ChunkFormatter);
+send_packet(_N, _Pid, _Chunk, DataState, _ChunkFormatter) ->
     DataState.
 
 finish_copy(Pid, Tab, Storage, RemoteS, NeedLock) ->
