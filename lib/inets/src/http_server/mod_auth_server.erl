@@ -26,6 +26,11 @@
 
 -behaviour(gen_server).
 
+-define(PASSWORD_DIGEST, sha256).
+-define(PASSWORD_ITERATIONS, 10000).
+-define(PASSWORD_KEYLEN, 64).
+-define(PASSWORD_SALTLEN, 12).
+
 %% mod_auth exports 
 -export([start/3, stop/3, 
 	 add_password/4, update_password/5, 
@@ -79,7 +84,7 @@ update_password(Addr, Port, Dir, Old, New) ->
     update_password(Addr, Port, ?DEFAULT_PROFILE, Dir, Old, New).
 update_password(Addr, Port, Profile, Dir, Old, New) when is_list(New) ->
     Name = make_name(Addr, Port, Profile),
-    Req  = {update_password, Dir, Old, New},
+    Req  = {update_password, Dir, Old, list_to_binary(New)},
     call(Name, Req).
 
 add_user(Addr, Port, Dir, User, Password) ->
@@ -215,14 +220,14 @@ handle_call({add_password, Dir, Password}, _From, State) ->
   
 handle_call({update_password, Dir, Old, New},_From,State) ->
     Reply = 
-	case getPassword(State, Dir) of
+	case get_password(State, Dir) of
 	    OldPwd when is_binary(OldPwd) ->
-		case erlang:md5(Old) of
-		    OldPwd ->
-			%% The old password is right =>
-			%% update the password to the new
-			do_update_password(Dir,New,State),
-			ok;
+		case check_password(Old, OldPwd) of
+                    {true, _} ->
+                        %% The old password is right =>
+                        %% update the password to the new
+                        do_update_password(Dir,New,State),
+                        ok;
 		_->
 		    {error, error_new}
 	    end;
@@ -252,7 +257,7 @@ code_change(_Vsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 api_call(Addr, Port, Profile, Dir, Func, Args,Password,State) ->
-    case controlPassword(Password, State, Dir) of
+    case control_password(Password, State, Dir) of
 	ok->
 	    ConfigName = httpd_util:make_name("httpd_conf", Addr, Port, Profile),
 	    case ets:match_object(ConfigName, {directory, {Dir, '$1'}}) of
@@ -266,16 +271,21 @@ api_call(Addr, Port, Profile, Dir, Func, Args,Password,State) ->
 	    {error,bad_password}
     end.
 
-controlPassword(Password, _State, _Dir) when Password =:= "DummyPassword" ->
+control_password(Password, _State, _Dir) when Password =:= "DummyPassword" ->
     bad_password;
 
-controlPassword(Password,State,Dir) ->
-    case getPassword(State,Dir) of
+control_password(Password,State,Dir) ->
+    case get_password(State,Dir) of
 	Pwd when is_binary(Pwd) ->
-	    case erlang:md5(Password) of
-		Pwd ->
+	    case check_password(Password, Pwd) of
+                % Password is correct and up-to-date
+                {true, false} ->
 		    ok;
-		_->
+                % Password is correct but should be re-hashed
+                {true, true} ->
+                    do_update_password(Dir, Password, State),
+                    ok;
+		_ ->
 		    bad_password
 	    end;
 	_ ->
@@ -283,7 +293,7 @@ controlPassword(Password,State,Dir) ->
     end.
 
     
-getPassword(State, Dir) ->
+get_password(State, Dir) ->
     case lookup(State#state.tab, Dir) of
 	[{_,Pwd}]->
 	    Pwd;
@@ -291,11 +301,53 @@ getPassword(State, Dir) ->
 	    {error,bad_password}
     end.
 
+-spec hash_new_password(binary()) -> binary().
+hash_new_password(Password) ->
+    Salt = crypto:strong_rand_bytes(?PASSWORD_SALTLEN),
+    Hash = crypto:pbkdf2_hmac(?PASSWORD_DIGEST, Password, Salt, ?PASSWORD_ITERATIONS, ?PASSWORD_KEYLEN),
+    Digest = erlang:atom_to_binary(?PASSWORD_DIGEST),
+    Iterations = erlang:integer_to_binary(?PASSWORD_ITERATIONS),
+    <<Digest/binary, "$", Iterations/binary, "$", Salt/binary, "$", Hash/binary>>.
+
+-spec kdf_from_stored(binary()) ->
+    {md5 | sha | sha224 | sha256 | sha384 | sha256, integer(), binary(), binary()}.
+kdf_from_stored(Password) ->
+    case binary:split(Password, <<"$">>, [global]) of
+        [Digest, Iterations, Salt, Hash] ->
+            {erlang:binary_to_existing_atom(Digest),
+             erlang:binary_to_integer(Iterations),
+             Salt,
+             Hash};
+
+        Md5 ->
+            {md5, 1, <<"">>, Md5}
+    end.
+
+%% Check whether the given input matches the stored password.
+%% Returns a pair. The first element determines whether the
+%% password is valid. The second determines whether the password
+%% should be upgraded to match changed hash function parameters.
+-spec check_password(binary(), binary()) -> {boolean(), boolean()}.
+check_password(Input, Stored) ->
+    case kdf_from_stored(Stored) of
+        {md5, 1, <<"">>, StoredMd5} ->
+            InMd5 = erlang:md5(Input),
+            {crypto:hash_equals(InMd5, StoredMd5), true};
+        {Alg, Iterations, Salt, StoredHashed} ->
+            InHashed = crypto:pbkdf2_hmac(Alg, Input, Salt, Iterations, size(StoredHashed)),
+            {crypto:hash_equals(InHashed, StoredHashed),
+             Alg == ?PASSWORD_DIGEST
+             andalso Iterations == ?PASSWORD_ITERATIONS
+             andalso size(StoredHashed) == ?PASSWORD_KEYLEN
+             andalso size(Salt) == ?PASSWORD_SALTLEN}
+    end.
+
+
 do_update_password(Dir, New, State) ->
-    ets:insert(State#state.tab, {Dir, erlang:md5(New)}).
+    ets:insert(State#state.tab, {Dir, hash_new_password(New)}).
 
 do_add_password(Dir, Password, State) ->
-    case getPassword(State,Dir) of
+    case get_password(State,Dir) of
 	PwdExists when is_binary(PwdExists) ->
 	    {error, dir_protected};
 	{error, _} ->
