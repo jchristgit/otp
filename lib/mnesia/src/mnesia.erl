@@ -132,6 +132,7 @@
 	 remote_dirty_match_object/2,           % Not for public use
 	 remote_dirty_select/2                  % Not for public use
 	]).
+-export_type([table/0]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
