@@ -276,7 +276,16 @@ sub normalize_link {
 	$link = "$dir/$mod";
     }
 
-    return $link if $link =~ /^\w{3,10}:/i; # mailto: http: .....
+    # mailto: http: .....
+    if ($link =~ /^\w{3,10}:/i) {
+        unless ($link =~ /(github.com)|^\//) {
+            if ($link =~ /^http(s)?:.*/) {
+                print $link;
+                print "\n";
+            }
+        }
+        return $link;
+    }
 
     $link =~ s/%([\da-fA-F]{2})/chr(hex($1))/eg; # Translate hex to char
 
