@@ -149,7 +149,7 @@ check_minimum_bytes_per_second(Properties) ->
 	    end
     end.
 mandatory_properties(ConfigList) ->
-    a_must(ConfigList, [server_name, port, server_root, document_root]).
+    a_must(ConfigList, [server_name, port, server_root]).
 
 a_must(_ConfigList, []) ->
     ok;
@@ -162,150 +162,151 @@ a_must(ConfigList, [Prop | Rest]) ->
     end.
 
 
-validate_config_params([]) ->
+validate_config_params(Config) ->
+    validate_config_params(Config, Config).
+
+validate_config_params([], _Config) ->
     ok;
-validate_config_params([{max_header_size, Value} | Rest]) 
+validate_config_params([{max_header_size, Value} | Rest], Config) 
   when is_integer(Value) andalso (Value > 0) ->
-    validate_config_params(Rest);
-validate_config_params([{max_header_size, Value} | _]) ->
+    validate_config_params(Rest, Config);
+validate_config_params([{max_header_size, Value} | _], _Config) ->
     throw({max_header_size, Value});
 
-validate_config_params([{max_body_size, Value} | Rest]) 
+validate_config_params([{max_body_size, Value} | Rest], Config) 
   when is_integer(Value) andalso (Value > 0) ->
-    validate_config_params(Rest);
-validate_config_params([{max_body_size, Value} | _]) -> 
+    validate_config_params(Rest, Config);
+validate_config_params([{max_body_size, Value} | _], _Config) -> 
     throw({max_body_size, Value});
 
-validate_config_params([{max_content_length, Value} | Rest]) 
+validate_config_params([{max_content_length, Value} | Rest], Config) 
   when is_integer(Value) andalso (Value > 0) ->
-    validate_config_params(Rest);
-validate_config_params([{max_content_length, Value} | _]) -> 
+    validate_config_params(Rest, Config);
+validate_config_params([{max_content_length, Value} | _], _Config) -> 
     throw({max_content_length, Value});
 
-validate_config_params([{server_name, Value} | Rest])  
+validate_config_params([{server_name, Value} | Rest], Config)
   when is_list(Value) ->
-    validate_config_params(Rest);
-validate_config_params([{server_name, Value} | _]) ->
+    validate_config_params(Rest, Config);
+validate_config_params([{server_name, Value} | _], _Config) ->
     throw({server_name, Value});
 
-validate_config_params([{server_tokens, Value} | Rest])  
+validate_config_params([{server_tokens, Value} | Rest], Config)
   when is_atom(Value) ->
     case lists:member(Value, plain_server_tokens()) of
 	true ->
-	    validate_config_params(Rest);
+	    validate_config_params(Rest, Config);
 	false ->
 	    throw({server_tokens, Value})
     end;
-validate_config_params([{server_tokens, {private, Value}} | Rest])  
+validate_config_params([{server_tokens, {private, Value}} | Rest], Config)
   when is_list(Value) ->
-    validate_config_params(Rest);
-validate_config_params([{server_tokens, Value} | _]) ->
+    validate_config_params(Rest, Config);
+validate_config_params([{server_tokens, Value} | _], _Config) ->
     throw({server_tokens, Value});
 
-validate_config_params([{socket_type, ip_comm} | Rest]) ->
-    validate_config_params(Rest);
+validate_config_params([{socket_type, ip_comm} | Rest], Config) ->
+    validate_config_params(Rest, Config);
 
-validate_config_params([{socket_type, {Value, Opts}} | Rest]) when Value == ip_comm; 
-								   Value == ssl ->
+validate_config_params([{socket_type, {Value, Opts}} | Rest], Config)
+  when Value == ip_comm; Value == ssl ->
     %% Make sure not to set socket values used internally
-    validate_config_params(Opts), 
-    validate_config_params(Rest);
+    validate_config_params(Opts, Config), 
+    validate_config_params(Rest, Config);
 
-validate_config_params([{socket_type, Value} | _]) ->
+validate_config_params([{socket_type, Value} | _], _Config) ->
     throw({socket_type, Value});
 
-validate_config_params([{port, Value} | Rest]) 
+validate_config_params([{port, Value} | Rest], Config) 
   when is_integer(Value) andalso (Value >= 0) ->
-    validate_config_params(Rest);
-validate_config_params([{port, Value} | _]) -> 
+    validate_config_params(Rest, Config);
+validate_config_params([{port, Value} | _], _Config) -> 
     throw({port, Value});
 
-validate_config_params([{bind_address, Value} | Rest])  ->
+validate_config_params([{bind_address, Value} | Rest], Config)  ->
     case is_bind_address(Value) of
 	true ->
-	    validate_config_params(Rest);
+	    validate_config_params(Rest, Config);
 	false ->
 	    throw({bind_address, Value})
     end;
 
-validate_config_params([{ipfamily, Value} | Rest]) 
+validate_config_params([{ipfamily, Value} | Rest], Config) 
   when ((Value =:= inet)  orelse 
 	(Value =:= inet6) orelse 
 	(Value =:= inet6fb4)) ->
-    validate_config_params(Rest);
-validate_config_params([{ipfamily, Value} | _]) -> 
+    validate_config_params(Rest, Config);
+validate_config_params([{ipfamily, Value} | _], _Config) -> 
     throw({ipfamily, Value});
 
-validate_config_params([{keep_alive, Value} | Rest])  
+validate_config_params([{keep_alive, Value} | Rest], Config)
   when (Value =:= true) orelse (Value =:= false) ->
-    validate_config_params(Rest);
-validate_config_params([{keep_alive, Value} | _]) ->
+    validate_config_params(Rest, Config);
+validate_config_params([{keep_alive, Value} | _], _Config) ->
     throw({keep_alive, Value});
 
-validate_config_params([{max_keep_alive_request, Value} | Rest]) 
+validate_config_params([{max_keep_alive_request, Value} | Rest], Config) 
   when is_integer(Value) andalso (Value > 0) ->
-    validate_config_params(Rest);
-validate_config_params([{max_keep_alive_request, Value} | _]) ->
+    validate_config_params(Rest, Config);
+validate_config_params([{max_keep_alive_request, Value} | _], _Config) ->
     throw({max_keep_alive_request, Value});
 
-validate_config_params([{keep_alive_timeout, Value} | Rest]) 
+validate_config_params([{keep_alive_timeout, Value} | Rest], Config)
   when is_integer(Value) andalso (Value >= 0) ->
-    validate_config_params(Rest);
-validate_config_params([{keep_alive_timeout, Value} | _]) ->
+    validate_config_params(Rest, Config);
+validate_config_params([{keep_alive_timeout, Value} | _], _Config) ->
     throw({keep_alive_timeout, Value});
 
-validate_config_params([{modules, Value} | Rest]) ->
-    ok = httpd_util:modules_validate(Value),
-    validate_config_params(Rest);
+validate_config_params([{modules, Value} | Rest], Config) ->
+    ok = httpd_util:modules_validate(Value, Config),
+    validate_config_params(Rest, Config);
 	  
-validate_config_params([{server_admin, Value} | Rest]) when is_list(Value) ->
-    validate_config_params(Rest);
-validate_config_params([{server_admin, Value} | _]) ->
+validate_config_params([{server_admin, Value} | Rest], Config) when is_list(Value) ->
+    validate_config_params(Rest, Config);
+validate_config_params([{server_admin, Value} | _], _Config) ->
     throw({server_admin, Value});
 
-validate_config_params([{server_root, Value} | Rest]) ->
+validate_config_params([{server_root, Value} | Rest], Config) ->
     ok = httpd_util:dir_validate(server_root, Value),
-    validate_config_params(Rest);
+    validate_config_params(Rest, Config);
 
-validate_config_params([{mime_types, Value} | Rest]) ->
+validate_config_params([{mime_types, Value} | Rest], Config) ->
     ok = httpd_util:mime_types_validate(Value),
-    validate_config_params(Rest);
+    validate_config_params(Rest, Config);
 
-validate_config_params([{max_clients, Value} | Rest]) 
+validate_config_params([{max_clients, Value} | Rest], Config) 
   when is_integer(Value) andalso (Value > 0) ->
-    validate_config_params(Rest);
-validate_config_params([{max_clients, Value} | _]) ->
+    validate_config_params(Rest, Config);
+validate_config_params([{max_clients, Value} | _], _Config) ->
     throw({max_clients, Value});
 
-validate_config_params([{document_root, Value} | Rest]) ->
+validate_config_params([{document_root, Value} | Rest], Config) ->
     ok = httpd_util:dir_validate(document_root, Value),
-    validate_config_params(Rest);
+    validate_config_params(Rest, Config);
 
-validate_config_params([{default_type, Value} | Rest]) when is_list(Value) ->
-    validate_config_params(Rest);
-validate_config_params([{default_type, Value} | _]) ->
+validate_config_params([{default_type, Value} | Rest], Config) when is_list(Value) ->
+    validate_config_params(Rest, Config);
+validate_config_params([{default_type, Value} | _], _Config) ->
     throw({default_type, Value});
 
-validate_config_params([{logger, Value} | Rest]) when is_list(Value) ->
+validate_config_params([{logger, Value} | Rest], Config) when is_list(Value) ->
     true = validate_logger(Value),
-    validate_config_params(Rest);
-validate_config_params([{logger, Value} | _]) ->
+    validate_config_params(Rest, Config);
+validate_config_params([{logger, Value} | _], _Config) ->
     throw({logger, Value});
 
 validate_config_params([{disable_chunked_transfer_encoding_send, Value} |
-			Rest])  
+			Rest], Config)
   when (Value =:= true) orelse (Value =:= false) ->
-    validate_config_params(Rest);
+    validate_config_params(Rest, Config);
 validate_config_params([{disable_chunked_transfer_encoding_send, Value} |
-			_ ]) ->
+			_ ], _Config) ->
     throw({disable_chunked_transfer_encoding_send, Value});
-validate_config_params([{Name, _} = Opt | _]) when Name == packet;
-						   Name == mode;
-						   Name == active;
-						   Name == reuseaddr ->
+validate_config_params([{Name, _} = Opt | _], _Config)
+  when Name == packet; Name == mode; Name == active; Name == reuseaddr ->
     throw({internaly_handled_opt_can_not_be_set, Opt});
-validate_config_params([_| Rest]) ->
-    validate_config_params(Rest).
+validate_config_params([_| Rest], Config) ->
+    validate_config_params(Rest, Config).
 
 is_bind_address(any) ->
     true;

@@ -48,7 +48,7 @@
          enable_debug/1,
          valid_options/3,
 	 modules_validate/1,
-         module_validate/1,
+	 modules_validate/2,
 	 dir_validate/2,
          file_validate/2,
          mime_type_validate/1,
@@ -552,21 +552,35 @@ create_part(Values)->
 %%----------------------------------------------------------------------
 %% Validate httpd options
 %%----------------------------------------------------------------------
+
+%% Light validation - without configuration check by the module
 modules_validate([]) ->
     ok;
 modules_validate([Head | Tail]) ->
-    ok = module_validate(Head),
-    modules_validate(Tail).
+    ok = module_validate(Head, []),
+    modules_validate(Tail, []).
 
-module_validate(Module) when is_atom(Module) ->
-    case code:which(Module) of
-	non_existing ->
+%% Strong validation - with configuration check, if supported by the module
+modules_validate([], _FullConfig) ->
+    ok;
+modules_validate([Head | Tail], FullConfig) ->
+    ok = module_validate(Head, FullConfig),
+    modules_validate(Tail, FullConfig).
+
+module_validate(Module, FullConfig) when is_atom(Module) ->
+    Location = code:which(Module),
+    HasValidation = erlang:function_exported(Module, validate_config, 1),
+    ShouldValidate = HasValidation andalso FullConfig =/= [],
+    case {Location, ShouldValidate} of
+        {non_existing, _} ->
 	    throw({module_does_not_exist, Module});
-	_ -> 
-	    ok
+        {_, true} -> 
+            ok = Module:validate_config(FullConfig);
+        {_, false} ->
+            ok
     end;
 
-module_validate(Module) ->
+module_validate(Module, _) ->
     throw({module_name_not_atom, Module}).
 
 dir_validate(ConfDir, Dir) ->

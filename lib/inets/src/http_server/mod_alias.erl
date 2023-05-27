@@ -25,7 +25,8 @@
 	 real_script_name/3,
 	 default_index/2,
 	 store/2,
-	 path/3]).
+	 path/3,
+         validate_config/1]).
 
 -include("httpd.hrl").
 -include("httpd_internal.hrl").
@@ -271,6 +272,16 @@ is_directory_index_list([Head | Tail]) when is_list(Head) ->
     is_directory_index_list(Tail);
 is_directory_index_list(_) ->
     false.
+
+validate_config(Config) ->
+    case proplists:get_value(document_root, Config) of
+        Value when is_list(Value) ->
+            ok;
+        undefined ->
+            {error, missing_property, document_root};
+        _Value ->
+            {error, bad_type, document_root}
+    end.
 
 
 %% ---------------------------------------------------------------------
