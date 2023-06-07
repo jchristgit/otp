@@ -36,7 +36,7 @@
 %% All of the hooks which are to be started by default. Remove by issuing
 %% -enable_builtin_hooks false to when starting common test.
 -define(BUILTIN_HOOKS,[#ct_hook_config{ module = cth_log_redirect,
-					opts = [],
+					opts = [{mode, add}],
 					prio = ctfirst }]).
 
 -record(ct_hook_config, {id, module, prio, scope, opts = [],
