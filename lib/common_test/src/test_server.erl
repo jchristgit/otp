@@ -1866,6 +1866,7 @@ log(Msg) ->
 %% capture_start() -> ok
 %% capture_stop() -> ok
 %%
+%% See test_server_gl:capture_start/2 and test_server_gl:capture_stop/1.
 %% Starts/stops capturing all output from io:format, and similar. Capturing
 %% output doesn't stop output from happening. It just makes it possible
 %% to retrieve the output using capture_get/0.
@@ -1873,12 +1874,10 @@ log(Msg) ->
 %% All output is stored as messages in the message queue until retrieved
 
 capture_start() ->
-    group_leader() ! {capture,self()},
-    ok.
+    test_server_gl:capture_start(group_leader(), self()).
 
 capture_stop() ->
-    group_leader() ! {capture,false},
-    ok.
+    test_server_gl:capture_stop(group_leader()).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% capture_get() -> Output
