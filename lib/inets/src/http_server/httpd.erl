@@ -480,7 +480,6 @@ serve(Args) ->
     argparse:run(AllArgs, serve_cli(), #{progname => "erl -s httpd serve"}).
 
 do_serve(#{address := Address, port := Port, directory := Path}) ->
-    {ok, Host} = inet:gethostname(),
     AbsPath = string:trim(filename:absname(Path), trailing, "/."),
     inets:start(),
     IpFamilyOpts = case Address of 
@@ -489,7 +488,7 @@ do_serve(#{address := Address, port := Port, directory := Path}) ->
     end,
     {ok, Pid} = start_service(
       [
-         {server_name, Host},
+         {server_name, net_adm:localhost()},
          {bind_address, Address},
          {document_root, AbsPath},
          {server_root, AbsPath},
