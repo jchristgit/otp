@@ -175,6 +175,9 @@ log(#{msg:={report,Msg},meta:=#{domain:=[otp,sasl]}}=Log,Config) ->
                     do_log(add_log_category(Log,sasl),Config)
             end
     end;
+%% Prevent recursively logging messages we have seen
+log(#{meta:=Meta}=_Log, _Config) when is_map_key(?MODULE, Meta) ->
+    ok;
 log(#{meta:=#{domain:=[otp]}}=Log,Config) ->
     do_log(add_log_category(Log,error_logger),Config);
 log(Log,Config) ->
