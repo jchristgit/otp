@@ -30,7 +30,6 @@
 %%% TEST SUITE INTERFACE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -export([lookup_config/2]).
 -export([fail/0,fail/1,format/1,format/2,format/3]).
--export([capture_start/0,capture_stop/0,capture_get/0]).
 -export([messages_get/0]).
 -export([permit_io/2]).
 -export([hours/1,minutes/1,seconds/1,sleep/1,adjusted_sleep/1,timecall/3]).
@@ -1861,35 +1860,6 @@ format(Detail, Format, Args) ->
 log(Msg) ->
     group_leader() ! {structured_io, self(), Msg},
     ok.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% capture_start() -> ok
-%% capture_stop() -> ok
-%%
-%% See test_server_gl:capture_start/2 and test_server_gl:capture_stop/1.
-%% Starts/stops capturing all output from io:format, and similar. Capturing
-%% output doesn't stop output from happening. It just makes it possible
-%% to retrieve the output using capture_get/0.
-%% Starting and stopping capture doesn't affect already captured output.
-%% All output is stored as messages in the message queue until retrieved
-
-capture_start() ->
-    test_server_gl:capture_start(group_leader(), self()).
-
-capture_stop() ->
-    test_server_gl:capture_stop(group_leader()).
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% capture_get() -> Output
-%% Output = [string(),...]
-%%
-%% Retrieves all the captured output since last call to capture_get/0.
-%% Note that since output arrive as messages to the process, it takes
-%% a short while from the call to io:format until all output is available
-%% by capture_get/0. It is not necessary to call capture_stop/0 before
-%% retrieving the output.
-capture_get() ->
-    test_server_sup:capture_get([]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% messages_get() -> Messages

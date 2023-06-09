@@ -523,11 +523,11 @@ wait_for_server() ->
     end.
 
 capture(Fun) ->
-    test_server:capture_start(),
+    ct:capture_start(),
     ok = Fun(),
     timer:sleep(1000),
-    test_server:capture_stop(),
-    string:tokens(lists:append(test_server:capture_get()),"\n").
+    ct:capture_stop(),
+    string:tokens(lists:append(ct:capture_get()),"\n").
 
 
 rb_filter(Filter,OutFile) ->

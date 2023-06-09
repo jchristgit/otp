@@ -832,10 +832,10 @@ export_import(Config) when is_list(Config) ->
     f:f1(),
     %% check that no info is written about where data comes from when no
     %% files are imported
-    test_server:capture_start(),
+    ct:capture_start(),
     check_f_calls(1,0),
-    [] = test_server:capture_get(),
-    test_server:capture_stop(),
+    [] = ct:capture_get(),
+    ct:capture_stop(),
     ok = cover:export("f_exported",f),
     check_f_calls(1,0),
     ok = cover:stop(),
@@ -843,30 +843,30 @@ export_import(Config) when is_list(Config) ->
     %% Check that same data exists after import and that info is written about
     %% data coming from imported file
     ok = cover:import("f_exported"),
-    test_server:capture_start(),
+    ct:capture_start(),
     check_f_calls(1,0),
-    [Text1] = test_server:capture_get(),
+    [Text1] = ct:capture_get(),
     "Analysis includes data from imported files"++_ = lists:flatten(Text1),
-    test_server:capture_stop(),
+    ct:capture_stop(),
 
     %% Export all modules
     {ok,a} = cover:compile(a),
-    test_server:capture_start(),
+    ct:capture_start(),
     ok = cover:export("all_exported"),
-    [] = test_server:capture_get(),
+    [] = ct:capture_get(),
     %    "Export includes data from imported files"++_ = lists:flatten(Text2),
-    test_server:capture_stop(),
+    ct:capture_stop(),
     ok = cover:stop(),
     ok = cover:import("all_exported"),
     check_f_calls(1,0),
 
     %% Check that data is reset when module is compiled again, and that
     %% warning is written when data is deleted for imported module.
-    test_server:capture_start(),
+    ct:capture_start(),
     {ok,f} = cover:compile(f),
-    [Text3] = test_server:capture_get(),
+    [Text3] = ct:capture_get(),
     "WARNING: Deleting data for module f imported from" ++ _ = lists:flatten(Text3),
-    test_server:capture_stop(),
+    ct:capture_stop(),
     check_f_calls(0,0),
 
     %% Check that data is summed up when first compiled and then imported
@@ -876,41 +876,41 @@ export_import(Config) when is_list(Config) ->
     f:f1(),
     f:f2(),
     ok = cover:import("f_exported"),
-    test_server:capture_start(),
+    ct:capture_start(),
     ok = cover:import("all_exported"),
-    [Text4] = test_server:capture_get(), % a is not loaded again
+    [Text4] = ct:capture_get(), % a is not loaded again
     "WARNING: Module a already imported from " ++ _ = lists:flatten(Text4),
-    test_server:capture_stop(),
+    ct:capture_stop(),
     check_f_calls(3,1),
 
     %% Check that warning is written when same file is imported twice,
     %% and that data is not imported again
-    test_server:capture_start(),
+    ct:capture_start(),
     ok = cover:import("all_exported"),
-    [Text5,Text6] = test_server:capture_get(),
+    [Text5,Text6] = ct:capture_get(),
     "WARNING: Module f already imported from " ++ _ = lists:flatten(Text5),
     "WARNING: Module a already imported from " ++ _ = lists:flatten(Text6),
-    test_server:capture_stop(),
+    ct:capture_stop(),
     check_f_calls(3,1),
 
     %% Check that reset removes all data and that the file which has been
     %% reset can be imported again with no warning
     cover:reset(f),
     check_f_calls(0,0),
-    test_server:capture_start(),
+    ct:capture_start(),
     ok = cover:import("all_exported"),
-    [Text7] = test_server:capture_get(), % warning only on mod a
+    [Text7] = ct:capture_get(), % warning only on mod a
     "WARNING: Module a already imported from " ++ _ = lists:flatten(Text7),
-    test_server:capture_stop(),
+    ct:capture_stop(),
     check_f_calls(1,0),
 
     %% same as above - only reset all
     cover:reset(),
     check_f_calls(0,0),
-    test_server:capture_start(),
+    ct:capture_start(),
     ok = cover:import("all_exported"),
-    [] = test_server:capture_get(), % no warnings
-    test_server:capture_stop(),
+    [] = ct:capture_get(), % no warnings
+    ct:capture_stop(),
     check_f_calls(1,0),
 
     %% Check no raw files are left open

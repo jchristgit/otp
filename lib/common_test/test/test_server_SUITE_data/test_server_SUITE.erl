@@ -259,15 +259,15 @@ capture(doc) -> ["Test that the capture functions work properly."];
 capture(Config) when is_list(Config) ->
     String1="abcedfghjiklmnopqrstuvwxyz",
     String2="0123456789",
-    test_server:capture_start(),
+    ct:capture_start(),
     io:format(String1),
-    [String1]=test_server:capture_get(),
+    [String1]=ct:capture_get(),
     io:format(String2),
-    [String2]=test_server:capture_get(),
-    test_server:capture_stop(),
-    []=test_server:capture_get(),
+    [String2]=ct:capture_get(),
+    ct:capture_stop(),
+    []=ct:capture_get(),
     io:format(String2),
-    []=test_server:capture_get(),
+    []=ct:capture_get(),
     ok.
 
 timecall(suite) -> [];
