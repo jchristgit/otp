@@ -217,10 +217,10 @@ file_fetch(Config) when is_list(Config) ->
     {ok,[{matched,_,1},{matched,_,1}]} = ttb:tp(?MODULE,foo,[]),
     ?MODULE:foo(),
     rpc:call(OtherNode,?MODULE,foo,[]),
-    test_server:capture_start(),
+    ct:capture_start(),
     ttb:stop([return_fetch_dir]),
-    test_server:capture_stop(),
-    [StoreString] = test_server:capture_get(),
+    ct:capture_stop(),
+    [StoreString] = ct:capture_get(),
     UploadDir =
 	lists:last(string:lexemes(lists:flatten(StoreString),"$ \n")),
 

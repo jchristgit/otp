@@ -63,20 +63,20 @@ cancel_timetrap(Config) ->
 print_and_log_unicode(Config) when is_list(Config) ->
     String = "שלום-שלום+של 日本語",
     test_server:comment(String),
-    test_server:capture_start(),
+    ct:capture_start(),
     io:format("String with ts: ~ts",[String]),
-    test_server:capture_stop(),
-    "String with ts: "++String = lists:flatten(test_server:capture_get()),
+    ct:capture_stop(),
+    "String with ts: "++String = lists:flatten(ct:capture_get()),
     ok.
 
 print_and_log_latin1(Config) when is_list(Config) ->
     String = "æøå",
     test_server:comment(String),
-    test_server:capture_start(),
+    ct:capture_start(),
     io:format("String with s: ~s",[String]),
     io:format("String with ts: ~ts",[String]),
-    test_server:capture_stop(),
+    ct:capture_stop(),
     ["String with s: "++String,
      "String with ts: "++String] =
-	[lists:flatten(L) || L<- test_server:capture_get()],
+	[lists:flatten(L) || L<- ct:capture_get()],
     ok.

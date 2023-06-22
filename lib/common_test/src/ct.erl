@@ -576,11 +576,11 @@ get_verbosity(Category) ->
 
 -spec capture_start() -> ok.
 capture_start() ->
-    test_server:capture_start().
+    test_server_gl:capture_start(group_leader(), self()).
 
 -spec capture_stop() -> ok.
 capture_stop() ->
-    test_server:capture_stop().
+    test_server_gl:capture_stop(group_leader()).
 
 -spec capture_get() -> ListOfStrings
       when ListOfStrings :: [string()].
@@ -592,7 +592,7 @@ capture_get() ->
       when ExclCategories :: [atom()],
            ListOfStrings :: [string()].
 capture_get([ExclCat | ExclCategories]) ->
-    Strs = test_server:capture_get(),
+    Strs = test_server_sup:capture_get(),
     CatsStr = [atom_to_list(ExclCat) | 
 	       [[$| | atom_to_list(EC)] || EC <- ExclCategories]],
     {ok,MP} = re:compile("<div class=\"(" ++ lists:flatten(CatsStr) ++ ")\">.*",
@@ -605,7 +605,7 @@ capture_get([ExclCat | ExclCategories]) ->
 		  end, Strs);
 
 capture_get([]) ->
-    test_server:capture_get().
+    test_server_sup:capture_get().
 
 
 -spec fail(Reason) -> no_return()

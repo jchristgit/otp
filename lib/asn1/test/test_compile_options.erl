@@ -116,17 +116,17 @@ verbose(Config) when is_list(Config) ->
     Asn1File = filename:join([DataDir,"Comment.asn"]),
 
     %% Test verbose compile
-    test_server:capture_start(),
+    ct:capture_start(),
     ok = asn1ct:compile(Asn1File, [{i,DataDir},{outdir,OutDir},noobj,verbose]),
-    test_server:capture_stop(),
-    [Line0|_] = test_server:capture_get(),
+    ct:capture_stop(),
+    [Line0|_] = ct:capture_get(),
     true = lists:prefix("Erlang ASN.1 compiler", Line0),
 
     %% Test non-verbose compile
-    test_server:capture_start(),
+    ct:capture_start(),
     ok = asn1ct:compile(Asn1File, [{i,DataDir},{outdir,OutDir},noobj]),
-    test_server:capture_stop(),
-    [] = test_server:capture_get(),
+    ct:capture_stop(),
+    [] = ct:capture_get(),
     ok.
 
 maps(Config) ->
