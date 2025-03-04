@@ -603,12 +603,29 @@ jobs:
           rm -rf make_test_dir/otp || true
           sudo bash -c "chown -R `whoami` make_test_dir && chmod -R +r make_test_dir"
           tar czf ${{ matrix.type }}_test_results.tar.gz make_test_dir
+          # Mostly the same sed command as in "cleanup tests" in the system-test job below.
+          # Translate file="/buildroot/otp/lib/os_mon/make_test_dir/os_mon_test/cpu_sup_SUITE.erl"
+          # to file="lib/os_mon/test/cpu_sup_SUITE.erl", and remove the failure message
+          # from each failed test to show the stacktrace instead. See
+          # https://github.com/mikepenz/action-junit-report/issues/1278
+          sed -i -e 's:file="/buildroot/otp/:file=":g' \
+              -e 's:\(file="[^/]*/[^/]*/\)make_test_dir/[^/]*:\1test:g' \
+              -e 's:\(file="erts/\)make_test_dir/[^/]*:\1test:g' \
+              -e 's:<failure.*>:<failure>:g' \
+              make_test_dir/*_junit.xml
       - name: Upload test results
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # ratchet:actions/upload-artifact@v4.6.1
         if: ${{ !cancelled() }}
         with:
           name: ${{ matrix.type }}_test_results
           path: ${{ matrix.type }}_test_results.tar.gz
+      - name: Upload test annotations
+        uses: mikepenz/action-junit-report@b14027d33d3a745ccc4d6a12f649e83110b5a373 # ratchet:mikepenz/action-junit-report@v5
+        if: ${{ !cancelled() }}
+        with:
+          annotate_only: true
+          report_paths: make_test_dir/*_junit.xml
+          require_tests: true
 
   system-test:
     name: Test Erlang/OTP (system)
@@ -644,6 +661,7 @@ jobs:
         run: |
           rm -rf make_test_dir/otp || true
           tar czf test_results.tar.gz make_test_dir
+          # Mostly the same sed command as in "cleanup tests" in the test job above.
           # Translate file="/buildroot/otp/lib/os_mon/make_test_dir/os_mon_test/cpu_sup_SUITE.erl"
           # to file="lib/os_mon/test/cpu_sup_SUITE.erl"
           sed -i -e 's:file="/buildroot/otp/:file=":g' \

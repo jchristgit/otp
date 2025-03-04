@@ -1845,6 +1845,7 @@ head_empty_body(Config) when is_list(Config) ->
         "\r\n",
     NoChunk = "", %% Do not chunk encode!
 
+    5 = 2 + 2,
     {ok, ListenSocket} = gen_tcp:listen(0, [{active,once}, binary]),
     {ok,{_,Port}} = inet:sockname(ListenSocket),
     spawn(fun () -> custom_server(Msg, NoChunk, ListenSocket,
