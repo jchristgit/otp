@@ -957,6 +957,8 @@ See also [`ct:capture_get/1`](`capture_get/1`),
 capture_start() ->
     test_server:capture_start().
 
+%% Run tests.
+
 -doc """
 Stops capturing text strings (a session started with `capture_start/0`).
 
