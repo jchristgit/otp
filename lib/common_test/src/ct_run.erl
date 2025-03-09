@@ -123,17 +123,6 @@ script_start(Args) ->
     Tracing = start_trace(Args),
     case ct_repeat:loop_test(script, Args) of
 	false ->
-	    {ok,Cwd} = file:get_cwd(),
-	    CTVsn =
-		case filename:basename(code:lib_dir(common_test)) of
-		    CTBase when is_list(CTBase) ->
-			case string:lexemes(CTBase, "-") of
-			    ["common_test",Vsn] -> " v"++Vsn;
-			    _ -> ""
-			end
-		end,
-	    io:format("~nCommon Test~s starting (cwd is ~ts)~n~n",
-	              [CTVsn,Cwd]),
 	    Self = self(),
 	    Pid = spawn_link(fun() -> script_start1(Self, Args) end),
 	    receive
@@ -356,7 +345,7 @@ script_start1(Parent, Args) ->
 		 basic_html = BasicHtml,
 		 esc_chars = EscChars,
 		 verbosity = Verbosity,
-		 event_handlers = EvHandlers,
+		 event_handlers = [{cte_default_stdout, []} | EvHandlers],
 		 ct_hooks = CTHooks,
                  ct_hooks_order = CTHooksOrder,
 		 enable_builtin_hooks = EnableBuiltinHooks,
@@ -2213,21 +2202,16 @@ do_run_test(Tests, Skip, Opts0) ->
 	    NoOfTests = length(Tests),
 	    NoOfSuites = length(Suites1),
 	    ct_util:warn_duplicates(Suites1),
-	    {ok,Cwd} = file:get_cwd(),
-	    io:format("~nCWD set to: ~tp~n", [Cwd]),
 	    if NoOfCases == unknown ->
-		    io:format("~nTEST INFO: ~w test(s), ~w suite(s)~n~n",
-			      [NoOfTests,NoOfSuites]),
 		    ct_logs:log("TEST INFO","~w test(s), ~w suite(s)",
 				[NoOfTests,NoOfSuites]);
 	       true ->
-		    io:format("~nTEST INFO: ~w test(s), ~w case(s) "
-			      "in ~w suite(s)~n~n",
-			      [NoOfTests,NoOfCases,NoOfSuites]),
 		    ct_logs:log("TEST INFO","~w test(s), ~w case(s) "
 				"in ~w suite(s)",
 				[NoOfTests,NoOfCases,NoOfSuites])
 	    end,
+            ct_framework:report(tests_collected, {NoOfTests, NoOfCases, NoOfSuites}),
+
 	    %% if the verbosity level is set lower than ?STD_IMPORTANCE, tell
 	    %% test_server to ignore stdout printouts to the test case log file
 	    case proplists:get_value(default, Opts0#opts.verbosity) of
