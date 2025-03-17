@@ -22,7 +22,7 @@
 -moduledoc false.
 
 %% Script interface
--export([script_start/0,script_usage/0]).
+-export([script_start/0, script_start/2, script_usage/0]).
 
 %% User interface
 -export([install/1,install/2,run/1,run/2,run/3,run_test/1,
@@ -76,8 +76,10 @@
 	       starter}).
 
 script_start() ->
+    script_start(init:get_arguments(), []).
+
+script_start(Init, RunTestStartOpts) ->
     process_flag(trap_exit, true),
-    Init = init:get_arguments(),
     CtArgs = lists:takewhile(fun({ct_erl_args,_}) -> false;
 				(_) -> true end, Init),
 
@@ -87,8 +89,8 @@ script_start() ->
     rel_to_abs(CtArgs),
 
     Args =
-	case application:get_env(common_test, run_test_start_opts) of
-	    {ok,EnvStartOpts} ->
+	case RunTestStartOpts of
+	    [_|_] ->
 		FlagFilter = fun(Flags) ->
 				     lists:filter(fun({root,_}) -> false;
 						     ({progname,_}) -> false;
@@ -103,9 +105,9 @@ script_start() ->
 			  "--------------------~n", []),
 		io:format(user, "--- Init args:~n~tp~n", [FlagFilter(Init)]),
 		io:format(user, "--- CT args:~n~tp~n", [FlagFilter(CtArgs)]),
-		EnvArgs = opts2args(EnvStartOpts),
+		EnvArgs = opts2args(RunTestStartOpts),
 		io:format(user, "--- Env opts -> args:~n~tp~n   =>~n~tp~n",
-			  [EnvStartOpts,EnvArgs]),
+			  [RunTestStartOpts,EnvArgs]),
 		Merged = merge_arguments(CtArgs ++ EnvArgs),
 		io:format(user, "--- Merged args:~n~tp~n", [FlagFilter(Merged)]),
 		io:format(user, "-----------------------------------"

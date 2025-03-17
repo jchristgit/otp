@@ -73,12 +73,10 @@ start_interactive(Config) ->
     Level = proplists:get_value(trace_level, Config),
     test_server:format(Level, "Saving start opts on ~p: ~p~n",
 		       [CTNode, Opts]),
-    rpc:call(CTNode, application, set_env,
-	     [common_test, run_test_start_opts, Opts]),
     test_server:format(Level, "Calling ct_run:script_start() on ~p~n",
 		       [CTNode]),
 
-    interactive_mode = rpc:call(CTNode, ct_run, script_start, []),
+    interactive_mode = rpc:call(CTNode, ct_run, script_start, [[], Opts]),
 
     ok = rpc:call(CTNode, ct, require, [key1]),
     value1 = rpc:call(CTNode, ct, get_config, [key1]),
