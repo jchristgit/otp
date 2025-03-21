@@ -265,14 +265,15 @@ int main(int argc, char** argv)
     if (ct_mode == VTS_MODE) {
 	PUSH4("-s", "ct_webtool", "script_start", "vts");
 	if (browser[0] != '\0') PUSH(browser);
-	PUSH3("-s", "ct_run", "script_start");
+	PUSH3("-S", "ct_run", "script_start");
     }
     else if (ct_mode == CT_SHELL_MODE) {
-	PUSH3("-s", "ct_run", "script_start");
+	PUSH3("-S", "ct_run", "script_start");
     }
     else if (ct_mode == NORMAL_MODE) {
-	PUSH3("-s", "ct_run", "script_start");
-	PUSH3("-s", "erlang", "halt");
+	PUSH3("-S", "ct_run", "script_start");
+	/* XXX: PUSH3("-s", "erlang", "halt"); */
+        /* TODO: CT_SHELL_MODE must be moved into ct_run.erl */
     }
 
     cnt = 1;

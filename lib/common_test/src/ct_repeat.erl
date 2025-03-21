@@ -38,7 +38,7 @@
 %% Flags:
 %%----------------------------------------------------------
 
-loop_test(If,Args) when is_list(Args) ->
+loop_test(If,Args) when is_map(Args) ->
     {ok,Cwd} = file:get_cwd(),
     case get_loop_info(Args) of
 	no_loop ->
@@ -49,7 +49,7 @@ loop_test(If,Args) when is_list(Args) ->
 	    E;
 	{repeat,N} ->
 	    io:format("\nCommon Test: Will repeat tests ~w times.\n\n",[N]),
-	    Args1 = [{loop_info,[{repeat,1,N}]} | Args],
+	    Args1 = Args#{loop_info := [{repeat, 1, N}]},
 	    Result = loop(If,repeat,0,N,undefined,Args1,undefined,[]),
 	    ok = file:set_cwd(Cwd),
 	    Result;
@@ -64,7 +64,7 @@ loop_test(If,Args) when is_list(Args) ->
 			io:format("\nCommon Test: "
 				  "Will repeat tests for ~s.\n\n",[ts(Secs)]),
 			TPid =
-			    case proplists:get_value(force_stop,Args) of
+			    case maps:get(force_stop, Args, undefined) of
 				False when False==false; False==undefined ->
 				    undefined;
 				ForceStop ->
@@ -75,7 +75,7 @@ loop_test(If,Args) when is_list(Args) ->
 					      stop_after(CtrlPid,Secs,ForceStop)
 				      end)
 			    end,
-			Args1 = [{loop_info,[{stop_time,Secs,StopTime,1}]} | Args],
+			Args1 = Args#{loop_info := [{stop_time, Secs, StopTime, 1}]},
 			loop(If,stop_time,0,Secs,StopTime,Args1,TPid,[])
 		end,
 	    ok = file:set_cwd(Cwd),
@@ -83,7 +83,7 @@ loop_test(If,Args) when is_list(Args) ->
     end.
     
 loop(_,repeat,N,N,_,_Args,_,AccResult) ->
-    lists:reverse(AccResult);
+    AccResult;
 
 loop(If,Type,N,Data0,Data1,Args,TPid,AccResult) ->
     Pid = spawn_tester(If,self(),Args),
@@ -108,8 +108,7 @@ loop(If,Type,N,Data0,Data1,Args,TPid,AccResult) ->
 	{Pid,Result} ->
 	    if Type == repeat ->
 		    io:format("\nTest run ~w(~w) complete.\n\n\n",[N+1,Data0]),
-		    lists:keydelete(loop_info,1,Args),
-		    Args1 = [{loop_info,[{repeat,N+2,Data0}]} | Args],
+		    Args1 = Args#{loop_info := [{repeat, N + 2, Data0}]},
 		    loop(If,repeat,N+1,Data0,Data1,Args1,TPid,[Result|AccResult]);
 	       Type == stop_time ->
 		    case remaining_time(Data1) of
@@ -122,9 +121,8 @@ loop(If,Type,N,Data0,Data1,Args,TPid,AccResult) ->
 			    io:format("\n~s of test time remaining, " 
 				      "starting run #~w...\n\n\n",
 				      [ts(Secs),N+2]),
-			    lists:keydelete(loop_info,1,Args),			    
 			    ST = {stop_time,Data0,Data1,N+2},
-			    Args1 = [{loop_info,[ST]} | Args],
+                            Args1 = Args#{loop_info := [ST]},
 			    loop(If,stop_time,N+1,Data0,Data1,Args1,TPid,
 				 [Result|AccResult])
 		    end
@@ -155,9 +153,9 @@ remaining_time(StopTime) ->
 	    0
     end.
 
-get_loop_info(Args) when is_list(Args) ->
-    case lists:keysearch(until,1,Args) of
-	{value,{until,Time}} ->
+get_loop_info(Args) when is_map(Args) ->
+    case Args of
+        #{until := Time} ->
 	    Time1 = delistify(Time),
 	    case catch get_stop_time(until,Time1) of
 		{'EXIT',_} ->
@@ -165,36 +163,18 @@ get_loop_info(Args) when is_list(Args) ->
 		Stop ->
 		    {stop_time,Stop}
 	    end;
-	false ->
-	    case lists:keysearch(duration,1,Args) of
-		{value,{duration,Time}} ->
-		    Time1 = delistify(Time),		    
-		    case catch get_stop_time(duration,Time1) of
-			{'EXIT',_} ->
-			    {error,{bad_time_format,Time1}};
-			Stop ->
-			    {stop_time,Stop}
-		    end;
-		false -> 
-		    case lists:keysearch(repeat,1,Args) of
-			{value,{repeat,R}} ->
-			    case R of
-				N when is_integer(N), N>0 -> 
-				    {repeat,N};
-				[Str] -> 
-				    case catch list_to_integer(Str) of
-					N when is_integer(N), N>0 ->
-					    {repeat,N};
-					_ ->
-					    {error,{invalid_repeat_value,Str}}
-				    end;
-				_ ->
-				    {error,{invalid_repeat_value,R}}
-			    end;
-			false ->
-			    no_loop
-		    end
-	    end
+        #{duration := Time} ->
+            Time1 = delistify(Time),		    
+            case catch get_stop_time(duration,Time1) of
+                {'EXIT',_} ->
+                    {error,{bad_time_format,Time1}};
+                Stop ->
+                    {stop_time,Stop}
+            end;
+        #{repeat := R} ->
+            {repeat, R};
+	_ ->
+            no_loop
     end.
 
 get_stop_time(until,[Y1,Y2,Mo1,Mo2,D1,D2,H1,H2,Mi1,Mi2,S1,S2]) ->
@@ -247,25 +227,20 @@ stop_after(_CtrlPid,Secs,ForceStop) ->
 
 %% Callback from ct_run to print loop info to system log.
 log_loop_info(Args) ->
-    case lists:keysearch(loop_info,1,Args) of
-	false ->
-	    ok;
-	{value,{_,[{repeat,C,N}]}} ->
+    case Args of
+        #{loop_info := {repeat, C, N}} ->
 	    ct_logs:log("Test loop info","Test run ~w of ~w",[C,N]); 
-	{value,{_,[{stop_time,Secs0,StopTime,N}]}} ->
+        #{loop_info := {stop_time, Secs0, StopTime, N}} ->
 	    LogStr1 = 
-		case lists:keysearch(duration,1,Args) of
-		    {value,{_,Dur}} ->
+		case Args of
+                    #{duration := Dur} ->
 			io_lib:format("Specified test duration: ~s (~w secs)\n",
 				      [delistify(Dur),Secs0]);
-		_ ->
-		    case lists:keysearch(until,1,Args) of
-			{value,{_,Until}} ->
-			    io_lib:format("Specified end time: ~s (duration ~w secs)\n",
-					  [delistify(Until),Secs0]);
-			_ ->
-			    ok
-		    end
+                    #{until := Until} ->
+                        io_lib:format("Specified end time: ~s (duration ~w secs)\n",
+                                      [delistify(Until),Secs0]);
+                    _ ->
+                        ok
 	    end,
 	    LogStr2 = io_lib:format("Test run #~w\n", [N]),
 	    Secs = remaining_time(StopTime),
@@ -273,13 +248,15 @@ log_loop_info(Args) ->
 		io_lib:format("Test time remaining: ~w secs (~w%)\n",
 			      [Secs,trunc((Secs/Secs0)*100)]),
 	    LogStr4 =
-		case proplists:get_value(force_stop,Args) of
+                case maps:get(force_stop, Args, undefined) of
 		    False when False==false; False==undefined ->
 			"";
 		    ForceStop ->
 			io_lib:format("force_stop is set to: ~w",[ForceStop])
 		end,			
-	    ct_logs:log("Test loop info","~ts", [LogStr1++LogStr2++LogStr3++LogStr4])
+	    ct_logs:log("Test loop info","~ts", [LogStr1++LogStr2++LogStr3++LogStr4]);
+	_ ->
+	    ok
     end.
 
 ts(Secs) ->

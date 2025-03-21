@@ -173,26 +173,11 @@ update_config(Name, Config) ->
 reload_config(KeyOrName) ->
     call({reload_config, KeyOrName}).
 
-process_default_configs(Opts) ->
-    lists:flatmap(fun({config,[_|_] = FileOrFiles}) ->
-			  case {io_lib:printable_unicode_list(FileOrFiles),
-				io_lib:printable_unicode_list(hd(FileOrFiles))} of
-			      {false,true} ->
-				  FileOrFiles;
-			      {true,false} ->
-				  [FileOrFiles];
-			      _ ->
-				  []
-			  end;
-		     (_) ->
-			  []
-		  end,Opts).
-
 process_user_configs(Opts, Acc) ->
-    case lists:keytake(userconfig, 1, Opts) of
+    case maps:get(userconfig, Opts, false) of
 	false ->
 	    lists:reverse(Acc);
-	{value, {userconfig, Config=[{_,_}|_]}, NewOpts} ->
+	Config = [{_,_}|_] ->
 	    Acc1 = lists:map(fun({_Callback, []}=Cfg) ->
 				     Cfg;
 				({Callback, Files=[File|_]}) when is_list(File) ->
@@ -200,17 +185,17 @@ process_user_configs(Opts, Acc) ->
 				({Callback, File=[C|_]}) when is_integer(C) ->
 				     {Callback, [File]}
 			     end, Config),
-	    process_user_configs(NewOpts, lists:reverse(Acc1)++Acc);
-	{value, {userconfig, {Callback, []}}, NewOpts} ->
-	    process_user_configs(NewOpts, [{Callback, []} | Acc]);
-	{value, {userconfig, {Callback, Files=[File|_]}}, NewOpts} when is_list(File) ->
-		process_user_configs(NewOpts, [{Callback, Files} | Acc]);
-	{value, {userconfig, {Callback, File=[C|_]}}, NewOpts} when is_integer(C) ->
-		process_user_configs(NewOpts, [{Callback, [File]} | Acc])
+	    process_user_configs(Opts, lists:reverse(Acc1)++Acc);
+        Config = {_Callback, []} ->
+	    process_user_configs(Opts, [Config | Acc]);
+	Config = {_Callback, _Files=[File|_]} when is_list(File) ->
+            process_user_configs(Opts, [Config | Acc]);
+	Config = {_Callback, _File=[C|_]} when is_integer(C) ->
+            process_user_configs(Opts, [Config | Acc])
     end.
 
 get_config_file_list(Opts) ->
-    DefaultConfigs = process_default_configs(Opts),
+    DefaultConfigs = maps:get(config, Opts),
     CfgFiles =
 	if
 	    DefaultConfigs == [] ->
@@ -742,6 +727,7 @@ check_exports(Callback) ->
     end.
 
 check_config_files(Configs) ->
+    io:format("CONFIGS ~w~n", [Configs]),
     ConfigChecker = fun
 	({Callback, [F|_R]=Files}) ->
 	    case check_callback_load(Callback) of
@@ -765,7 +751,9 @@ check_config_files(Configs) ->
 		     {error, {callback, {Callback,Why}}}
 	    end
     end,
-    lists:keysearch(error, 1, lists:flatten(lists:map(ConfigChecker, Configs))).
+    Res = lists:flatten(lists:map(ConfigChecker, Configs)),
+    io:fwrite("Res ~w~n", [Res]),
+    lists:keysearch(error, 1, Res).
 
 prepare_user_configs([CallbackMod|UserConfigs], Acc, new) ->
     prepare_user_configs(UserConfigs,
@@ -781,14 +769,14 @@ prepare_user_configs([], Acc, _) ->
     Acc.
 
 prepare_config_list(Args) ->
-    ConfigFiles = case lists:keysearch(ct_config, 1, Args) of
-		      {value,{ct_config,Files}} ->
+    ConfigFiles = case Args of
+                      #{ct_config := Files} ->
 			  [{?ct_config_txt,[filename:absname(F) || F <- Files]}];
-		      false ->
+		      _ ->
 			  []
 		  end,
-    UserConfigs = case lists:keysearch(userconfig, 1, Args) of
-		      {value,{userconfig,UserConfigFiles}} ->
+    UserConfigs = case Args of
+                      #{userconfig := UserConfigFiles} ->
 			  prepare_user_configs(UserConfigFiles, [], new);
 		      false ->
 			  []

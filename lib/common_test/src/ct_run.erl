@@ -22,7 +22,7 @@
 -moduledoc false.
 
 %% Script interface
--export([script_start/0, script_start/2, script_usage/0]).
+-export([script_start/1, script_start/2, script_usage/0]).
 
 %% User interface
 -export([install/1,install/2,run/1,run/2,run/3,run_test/1,
@@ -75,53 +75,266 @@
 	       tests,
 	       starter}).
 
-script_start() ->
-    script_start(init:get_arguments(), []).
+-spec cli() -> argparse:command().
+cli() ->
+    #{
+      % https://www.erlang.org/doc/apps/common_test/run_test_chapter
+      % "The following flags can also be used..."
+      arguments => [
+        #{
+          name => help,
+          type => boolean,
+          short => $h,
+          long => "help",
+          help => "Show this description."
+        },
+        #{
+          name => dir,
+          type => string,
+          long => "dir",
+          nargs => nonempty_list,
+          action => extend,
+          help => "Run tests from the specified directories"
+        },
+        #{
+          name => suite,
+          type => string,
+          long => "suite",
+          nargs => nonempty_list,
+          action => extend,
+          help => "Run the specified suites"
+        },
+        #{
+          name => group,
+          type => {atom, unsafe},
+          long => "group",
+          nargs => nonempty_list,
+          default => [],
+          action => extend,
+          help => "Only run the specified groups"
+        },
+        #{
+          name => testcase,
+          type => {atom, unsafe},
+          long => "case",
+          nargs => nonempty_list,
+          default => [],
+          action => extend,
+          help => "Only run the specified cases"
+        },
+        #{
+          name => spec,
+          type => string,
+          long => "spec",
+          nargs => nonempty_list,
+          default => undefined,
+          action => extend,
+          help => "Run the specified test specifications"
+        },
+        #{
+          name => logdir,
+          type => string,
+          long => "logdir",
+          help => "Specifies where the HTML log files are to be written."
+        },
+        #{
+          name => label,
+          type => string,
+          long => "label",
+          help => "Associates the test run with a name that gets printed in the overview HTML log files."
+        },
+        % Hooks & event handlers
+        #{
+          name => event_handler,
+          type => {atom, unsafe},
+          long => "event_handler",
+          nargs => nonempty_list,
+          default => [],
+          help => "Install event handlers."
+        },
+        #{
+          name => ct_hooks,
+          type => string,
+          long => "ct_hooks",
+          nargs => nonempty_list,
+          default => [],
+          help => "Install common test hooks."
+        },
+        #{
+          name => ct_hooks_order,
+          type => {atom, [test, config]},
+          long => "ct_hooks_order",
+          default => undefined,
+          % XXX: refine
+          help => "Determine in which order the hooks should be loaded."
+        },
+        #{
+          name => enable_builtin_hooks,
+          type => boolean,
+          long => "enable_builtin_hooks",
+          default => true,
+          help => "Whether to enable CT's internal hooks."
+        },
+        #{
+          name => logopts,
+          type => {atom, [no_src, no_nl]},
+          default => [],
+          action => extend,
+          long => "logopts",
+          nargs => nonempty_list,
+          help =>
+            """
+            Modifies the logging behaviour.
+            `no_src` disables generating the test suite source code.
+            `no_nl` stops appending a newline character to any output to stdout.
+            """
+        },
+        #{
+          name => join_specs,
+          type => boolean,
+          default => false,
+          long => "join_specs",
+          action => {store, true},
+          % XXX
+          help => "If multiple test specifications are given, join them together."
+        },
+        #{
+          name => allow_user_terms,
+          type => boolean,
+          default => false,
+          long => "allow_user_terms",
+          action => {store, true},
+          % XXX
+          help => "Allow user terms in ?"
+        },
+        #{
+          name => silent_connections,
+          type => {atom, unsafe},
+          long => "silent_connections",
+          default => [],
+          nargs => nonempty_list,
+          action => extend,
+          % XXX
+          help => "WRITE ME!"
+        },
+        % Updating internal behaviour
+        #{
+          name => userconfig,
+          type => string,
+          nargs => nonempty_list,
+          long => "userconfig",
+          default => [],
+          % XXX: This could do with some expansion.
+          help => "Specify external configuration data."
+        },
+        #{
+          name => exit_status_mode,
+          type => {string, ["ignore_config"]},
+          long => "exit_status",
+          % XXX: This could do with some expansion.
+          help => "Change the default exit status behaviour."
+        },
+        % Code path manipulation
+        #{
+          name => path_add_head,
+          type => string,
+          nargs => nonempty_list,
+          action => extend,
+          long => "pa",
+          help => "Add the specified paths to the head of the code path."
+        },
+        #{
+          name => path_add_tail,
+          type => string,
+          nargs => nonempty_list,
+          action => extend,
+          long => "pz",
+          help => "Add the specified paths to the tail of the code path."
+        },
+        % Internal
+        #{
+          name => ct_erl_args,
+          type => string,
+          nargs => all,
+          long => "ct_erl_args",
+          help => hidden
+        },
+        #{
+          name => ct_config,
+          type => string,
+          nargs => nonempty_list,
+          default => [],
+          long => "ct_config",
+          action => extend,
+          help => hidden
+        }
+      ],
+      help => "Run tests using Common Test."
+    }.
 
-script_start(Init, RunTestStartOpts) ->
+% -spec cli_parser_options() -> argparse:parser_options().
+cli_parser_options() ->
+    #{
+      % XXX: This doesn't seem to work, `ct_run -help` still shows `erl`.
+      progname => "ct_run"
+    }.
+
+script_start(Args) ->
+    script_start(Args, []).
+
+script_start(RawArguments, RunTestStartOpts) ->
+    {ok, CtArgs, _Path, _Command} = argparse:parse(RawArguments, cli(), cli_parser_options()),
+    erlang:display(CtArgs),
+    case CtArgs of
+        #{help := true} ->
+            io:format("~ts", [argparse:help(cli())]),
+            erlang:halt(0);
+        _ ->
+            ok
+    end,
     process_flag(trap_exit, true),
-    CtArgs = lists:takewhile(fun({ct_erl_args,_}) -> false;
-				(_) -> true end, Init),
 
     %% convert relative dirs added with pa or pz (pre erl_args on
     %% the ct_run command line) to absolute so that app modules
     %% can be found even after CT changes CWD to logdir
     rel_to_abs(CtArgs),
 
-    Args =
-	case RunTestStartOpts of
-	    [_|_] ->
-		FlagFilter = fun(Flags) ->
-				     lists:filter(fun({root,_}) -> false;
-						     ({progname,_}) -> false;
-						     ({home,_}) -> false;
-						     ({noshell,_}) -> false;
-						     ({noinput,_}) -> false;
-						     (_) -> true
-						  end, Flags)
-			     end,
-		%% used for purpose of testing the run_test interface
-		io:format(user, "~n-------------------- START ARGS "
-			  "--------------------~n", []),
-		io:format(user, "--- Init args:~n~tp~n", [FlagFilter(Init)]),
-		io:format(user, "--- CT args:~n~tp~n", [FlagFilter(CtArgs)]),
-		EnvArgs = opts2args(RunTestStartOpts),
-		io:format(user, "--- Env opts -> args:~n~tp~n   =>~n~tp~n",
-			  [RunTestStartOpts,EnvArgs]),
-		Merged = merge_arguments(CtArgs ++ EnvArgs),
-		io:format(user, "--- Merged args:~n~tp~n", [FlagFilter(Merged)]),
-		io:format(user, "-----------------------------------"
-			  "-----------------~n~n", []),
-		Merged;
-	    _ ->
-		merge_arguments(CtArgs)
-	end,
-    case proplists:get_value(help, Args) of
-	undefined -> script_start(Args);
-	_ -> script_usage()
+    CtArgs1 = case RunTestStartOpts of
+        [_|_] ->
+            FlagFilter = fun(Flags) ->
+                                 lists:filter(fun({root,_}) -> false;
+                                                 ({progname,_}) -> false;
+                                                 ({home,_}) -> false;
+                                                 ({noshell,_}) -> false;
+                                                 ({noinput,_}) -> false;
+                                                 (_) -> true
+                                              end, Flags)
+                         end,
+            %% used for purpose of testing the run_test interface
+            io:format(user, "~n-------------------- START ARGS "
+                      "--------------------~n", []),
+            io:format(user, "--- Init args:~n~tp~n", [FlagFilter(init:get_arguments())]),
+            io:format(user, "--- CT args:~n~tp~n~n", [FlagFilter(proplists:from_map(CtArgs))]),
+            EnvArgs = opts2args(RunTestStartOpts),
+            io:format(user, "--- Env opts -> args:~n~tp~n   =>~n~tp~n",
+                      [RunTestStartOpts,EnvArgs]),
+            Merged = maps:merge(CtArgs, maps:from_list(RunTestStartOpts)),
+            io:format(user, "--- Merged args:~n~tp~n", [FlagFilter(proplists:from_map(Merged))]),
+            io:format(user, "-----------------------------------"
+                      "-----------------~n~n", []),
+            Merged;
+    
+        _ ->
+            % CtArgs
+            % merge_arguments(CtArgs)
+            CtArgs
+    end,
+    case CtArgs1 of
+        #{help := true} -> script_usage();
+	_ -> do_start(CtArgs)
     end.
 
-script_start(Args) ->
+do_start(Args) ->
     Tracing = start_trace(Args),
     case ct_repeat:loop_test(script, Args) of
 	false ->
@@ -179,9 +392,7 @@ analyze_test_result({_Ok,Failed,{_UserSkipped,AutoSkipped}}, Args) ->
 		0 ->
 		    ?EXIT_STATUS_TEST_SUCCESSFUL;
 		_ ->
-		    case get_start_opt(exit_status,
-				       fun([ExitOpt]) -> ExitOpt end,
-				       Args) of
+                    case maps:get(exit_status_mode, Args, undefined) of
 			undefined ->
 			    ?EXIT_STATUS_TEST_CASE_FAILED;
 			"ignore_config" ->
@@ -229,65 +440,52 @@ script_start1(Parent, Args) ->
     %% tag this process
     ct_util:mark_process(),
     %% read general start flags
-    Label = get_start_opt(label, fun([Lbl]) -> Lbl end, Args),
-    Profile = get_start_opt(profile, fun([Prof]) -> Prof end, Args),
-    Shell = get_start_opt(shell, true, Args),
-    Cover = get_start_opt(cover, fun([CoverFile]) -> ?abs(CoverFile) end, Args),
-    CoverStop = get_start_opt(cover_stop, 
-			      fun([CS]) -> list_to_atom(CS) end, Args),
-    LogDir = get_start_opt(logdir, fun([LogD]) -> LogD end, Args),
-    LogOpts = get_start_opt(logopts,
-			    fun(Os) -> [list_to_atom(O) || O <- Os] end,
-			    [], Args),
-    Verbosity = verbosity_args2opts(Args),
-    MultTT = get_start_opt(multiply_timetraps,
-			   fun([MT]) -> list_to_number(MT) end, Args),
-    ScaleTT = get_start_opt(scale_timetraps,
-			    fun([CT]) -> list_to_atom(CT);
-			       ([]) -> true
-			    end, Args),
-    CreatePrivDir = get_start_opt(create_priv_dir,
-				  fun([PD]) -> list_to_atom(PD);
-				     ([]) -> auto_per_tc
-				  end, Args),
-    EvHandlers = event_handler_args2opts(Args),
-    CTHooks = ct_hooks_args2opts(Args),
-    CTHooksOrder = get_start_opt(ct_hooks_order,
-                                 fun([CTHO]) -> list_to_atom(CTHO);
-                                    ([]) -> undefined
-                                 end, undefined, Args),
-    EnableBuiltinHooks = get_start_opt(enable_builtin_hooks,
-				       fun([CT]) -> list_to_atom(CT);
-					  ([]) -> undefined
-				       end, undefined, Args),
+    Label = maps:get(label, Args, undefined),
+    Profile = maps:get(profile, Args, undefined),
+    Shell = maps:get(shell, Args, undefined),  % XXX: boolean
+    Cover = maps:get(cover, Args, undefined),  % XXX: ?abs(CoverFile)
+    CoverStop = maps:get(cover_stop, Args, undefined),  % XXX: list_to_atom
+    LogDir = maps:get(logdir, Args, undefined),
+    LogOpts = maps:get(logopts, Args),
+    Verbosity = maps:get(verbosity, Args, []),  % XXX: verbosity_args2opts
+    MultTT = maps:get(multiply_timetraps, Args, undefined),  % XXX: list_to_number
+    ScaleTT = maps:get(scale_timetraps, Args, undefined),  % XXX: list_to_atom
+    CreatePrivDir = maps:get(create_priv_dir, Args, undefined),  % XXX: atom or default auto_per_tc
+    EvHandlers = maps:get(event_handler, Args, undefined),  % XXX: event_handler_args2opts
+    CTHooks = ct_hooks_args2opts(maps:get(ct_hooks, Args)),  % XXX: ct_hooks_args2opts
+    CTHooksOrder = maps:get(ct_hooks_order, Args),  % XXX: list_to_atom or undefined
+    EnableBuiltinHooks = maps:get(enable_builtin_hooks, Args),  % XXX: list_to_atom or undefined
+    AbortIfMissing = maps:get(abort_if_missing_suites, Args, undefined),  % XXX: default true, else bool
+    SilentConns = maps:get(silent_connections, Args, undefined),  % XXX: default all, else listcomp list_to_atom
+    Stylesheet = maps:get(stylesheet, Args, undefined),  % XXX: ?abs(SS)
 
     %% check flags and set corresponding application env variables
 
     %% ct_decrypt_key | ct_decrypt_file
-    case proplists:get_value(ct_decrypt_key, Args) of
-	[DecryptKey] ->
-	    application:set_env(common_test, decrypt, {key,DecryptKey});
-	undefined ->
-	    case proplists:get_value(ct_decrypt_file, Args) of
-		[DecryptFile] ->
-		    application:set_env(common_test, decrypt,
-					{file,?abs(DecryptFile)});
-		undefined ->
-		    application:unset_env(common_test, decrypt)
-	    end
+      case maps:find(ct_decrypt_key, Args) of
+          {ok, DecryptKey} ->
+	      application:set_env(common_test, decrypt, {key,DecryptKey});
+	  error ->
+              case maps:find(ct_decrypt_file, Args) of
+                  {ok, DecryptFile} ->
+	               application:set_env(common_test, decrypt,
+	            			{file,?abs(DecryptFile)});
+	           error ->
+	               application:unset_env(common_test, decrypt)
+	      end
     end,
     %% no_auto_compile + include
     {AutoCompile,IncludeDirs} =
-	case proplists:get_value(no_auto_compile, Args) of
+        case maps:get(no_auto_compile, Args, undefined) of
 	    undefined ->
 		application:set_env(common_test, auto_compile, true),
 		InclDirs =
-		    case proplists:get_value(include, Args) of
-			Incls when is_list(hd(Incls)) ->
+                  case maps:find(include, Args) of
+                        {ok, Incls} when is_list(hd(Incls)) ->
 			    [filename:absname(IDir) || IDir <- Incls];
-			Incl when is_list(Incl) ->
+                        {ok, Incl} when is_list(Incl) ->
 			    [filename:absname(Incl)];
-			undefined ->
+			error ->
 			    []
 		    end,
 		case os:getenv("CT_INCLUDE_PATH") of
@@ -305,23 +503,9 @@ script_start1(Parent, Args) ->
 		{false,[]}
 	end,
 
-    %% abort test run if some suites can't be compiled
-    AbortIfMissing = get_start_opt(abort_if_missing_suites,
-				   fun([]) -> true;
-				      ([Bool]) -> list_to_atom(Bool)
-				   end, true, Args),
-    %% silent connections
-    SilentConns =
-	get_start_opt(silent_connections,
-		      fun(["all"]) -> [all];
-			 (Conns) -> [list_to_atom(Conn) || Conn <- Conns]
-		      end, [], Args),
-    %% stylesheet
-    Stylesheet = get_start_opt(stylesheet,
-			       fun([SS]) -> ?abs(SS) end, Args),
     %% basic_html - used by ct_logs
-    BasicHtml = case proplists:get_value(basic_html, Args) of
-		    undefined ->
+    BasicHtml = case maps:find(basic_html, Args) of
+		    error ->
 			application:set_env(common_test, basic_html, false),
 			undefined;
 		    _ ->
@@ -329,8 +513,8 @@ script_start1(Parent, Args) ->
 			true
 		end,
     %% esc_chars - used by ct_logs
-    EscChars = case proplists:get_value(no_esc_chars, Args) of
-		   undefined ->
+    EscChars = case maps:find(no_esc_chars, Args) of
+		   error ->
 		       application:set_env(common_test, esc_chars, true),
 		       undefined;
 		   _ ->
@@ -338,8 +522,8 @@ script_start1(Parent, Args) ->
 		       false
 	       end,
     %% disable_log_cache - used by ct_logs
-    case proplists:get_value(disable_log_cache, Args) of
-	undefined ->
+    case maps:find(disable_log_cache, Args) of
+	error ->
 	    application:set_env(common_test, disable_log_cache, false);
 	_ ->
 	    application:set_env(common_test, disable_log_cache, true)
@@ -379,10 +563,8 @@ script_start1(Parent, Args) ->
     Parent ! {self(), Result}.
 
 run_or_refresh(Opts = #opts{logdir = LogDir, stylesheet = CustomStylesheet}, Args) ->
-    case proplists:get_value(refresh_logs, Args) of
-	undefined ->
-	    script_start2(Opts, Args);
-	Refresh ->
+    case Args of
+        #{refresh_logs := Refresh} ->
 	    LogDir1 = case Refresh of
 			  [] -> which(logdir,LogDir);
 			  [RefreshDir] -> ?abs(RefreshDir)
@@ -408,15 +590,17 @@ run_or_refresh(Opts = #opts{logdir = LogDir, stylesheet = CustomStylesheet}, Arg
 			    timer:sleep(500), % time to flush io before quitting
 			    ok
 		    end
-	    end
+	    end;
+	_ ->
+	    script_start2(Opts, Args)
     end.
 
 script_start2(Opts = #opts{shell = undefined}, Args) ->
-    case proplists:get_value(spec, Args) of
-	Specs when Specs =/= [], Specs =/= undefined ->
+    case Args of
+        #{spec := Specs} when Specs =/= [], Specs =/= undefined ->
 	    Specs1 = get_start_opt(join_specs, [Specs], Specs, Args),
 	    %% using testspec as input for test
-	    Relaxed = get_start_opt(allow_user_terms, true, false, Args),
+	    Relaxed = maps:get(allow_user_terms, Args),
 	    try ct_testspec:collect_tests_from_file(Specs1, Relaxed) of
                 TestSpecData ->
 		    execute_all_specs(TestSpecData, Opts, Args, [])
@@ -426,7 +610,7 @@ script_start2(Opts = #opts{shell = undefined}, Args) ->
                 _:Reason:StackTrace ->
 		    {error,{invalid_testspec,{Reason,StackTrace}}}
             end;
-	[] ->
+        #{spec := []} ->
 	    {error,no_testspec_specified};
 	_ ->	    % no testspec used
 	    %% read config/userconfig from start flags
@@ -653,17 +837,13 @@ script_start3(Opts, Args) ->
 				  Opts#opts{step = Step,
 					    cover = undefined}
 			  end, Opts, Args),
-    case {proplists:get_value(dir, Args),
-	  proplists:get_value(suite, Args),
-	  groups_and_cases(proplists:get_value(group, Args),
-			   proplists:get_value(testcase, Args))} of
+    case {maps:get(dir, Args, undefined),
+          maps:get(suite, Args, undefined),
+	  groups_and_cases(maps:get(group, Args),
+			   maps:get(testcase, Args))} of
 	%% flag specified without data
 	{_,_,Error={error,_}} ->
 	    Error;
-	{_,[],_} ->
-	    {error,no_suite_specified};
-	{[],_,_} ->
-	    {error,no_dir_specified};
 
 	{Dirs,undefined,[]} when is_list(Dirs) ->
 	    script_start4(Opts#opts{tests = tests(Dirs)}, Args);
@@ -752,72 +932,8 @@ script_start4(Opts = #opts{tests = Tests}, Args) ->
     do_run(Tests, [], Opts, Args).
 
 script_usage() ->
-    io:format("\nUsage:\n\n"),
-    io:format("Run tests from command line:\n\n"
-	      "\tct_run -dir TestDir1 TestDir2 .. TestDirN |"
-	      "\n\t  [-dir TestDir] -suite Suite1 Suite2 .. SuiteN"
-	      "\n\t   [-group Group1 Group2 .. GroupN] [-case Case1 Case2 .. CaseN]"
-	      "\n\t [-step [config | keep_inactive]]"
-	      "\n\t [-config ConfigFile1 ConfigFile2 .. ConfigFileN]"
-	      "\n\t [-userconfig CallbackModule ConfigFile1 .. ConfigFileN]"
-	      "\n\t [-decrypt_key Key] | [-decrypt_file KeyFile]"
-	      "\n\t [-logdir LogDir]"
-	      "\n\t [-logopts LogOpt1 LogOpt2 .. LogOptN]"
-	      "\n\t [-verbosity GenVLvl | [CategoryVLvl1 .. CategoryVLvlN]]"
-	      "\n\t [-silent_connections [ConnType1 ConnType2 .. ConnTypeN]]"
-	      "\n\t [-stylesheet CSSFile]"	     
-	      "\n\t [-cover CoverCfgFile]"
-	      "\n\t [-cover_stop Bool]"
-	      "\n\t [-event_handler EvHandler1 EvHandler2 .. EvHandlerN]"
-	      "\n\t [-ct_hooks CTHook1 CTHook2 .. CTHookN]"
-	      "\n\t [-ct_hooks_order test | config]"
-	      "\n\t [-include InclDir1 InclDir2 .. InclDirN]"
-	      "\n\t [-no_auto_compile]"
-	      "\n\t [-abort_if_missing_suites]"
-	      "\n\t [-multiply_timetraps N]"
-	      "\n\t [-scale_timetraps]"
-	      "\n\t [-create_priv_dir auto_per_run | auto_per_tc | manual_per_tc]"
-	      "\n\t [-basic_html]"
-	      "\n\t [-no_esc_chars]"
-	      "\n\t [-repeat N] |"
-	      "\n\t [-duration HHMMSS [-force_stop [skip_rest]]] |"
-	      "\n\t [-until [YYMoMoDD]HHMMSS [-force_stop [skip_rest]]]"
-	      "\n\t [-exit_status ignore_config]"
-	      "\n\t [-help]\n\n"),
-    io:format("Run tests using test specification:\n\n"
-	      "\tct_run -spec TestSpec1 TestSpec2 .. TestSpecN"
-	      "\n\t [-config ConfigFile1 ConfigFile2 .. ConfigFileN]"
-	      "\n\t [-decrypt_key Key] | [-decrypt_file KeyFile]"
-	      "\n\t [-logdir LogDir]"
-	      "\n\t [-logopts LogOpt1 LogOpt2 .. LogOptN]"
-	      "\n\t [-verbosity GenVLvl | [CategoryVLvl1 .. CategoryVLvlN]]"
-	      "\n\t [-allow_user_terms]"
-	      "\n\t [-join_specs]"
-	      "\n\t [-silent_connections [ConnType1 ConnType2 .. ConnTypeN]]"
-	      "\n\t [-stylesheet CSSFile]"
-	      "\n\t [-cover CoverCfgFile]"
-	      "\n\t [-cover_stop Bool]"
-	      "\n\t [-event_handler EvHandler1 EvHandler2 .. EvHandlerN]"
-	      "\n\t [-ct_hooks CTHook1 CTHook2 .. CTHookN]"
-	      "\n\t [-include InclDir1 InclDir2 .. InclDirN]"
-	      "\n\t [-no_auto_compile]"
-	      "\n\t [-abort_if_missing_suites]"
-	      "\n\t [-multiply_timetraps N]"
-	      "\n\t [-scale_timetraps]"
-	      "\n\t [-create_priv_dir auto_per_run | auto_per_tc | manual_per_tc]"
-	      "\n\t [-basic_html]"
-	      "\n\t [-no_esc_chars]"
-	      "\n\t [-repeat N] |"
-	      "\n\t [-duration HHMMSS [-force_stop [skip_rest]]] |"
-	      "\n\t [-until [YYMoMoDD]HHMMSS [-force_stop [skip_rest]]]\n\n"),
-    io:format("Refresh the HTML index files:\n\n"
-	      "\tct_run -refresh_logs [LogDir]"
-	      " [-logdir LogDir] "
-	      " [-basic_html]\n\n"),
-    io:format("Run CT in interactive mode:\n\n"
-	      "\tct_run -shell"
-	      "\n\t [-config ConfigFile1 ConfigFile2 .. ConfigFileN]"
-	      "\n\t [-decrypt_key Key] | [-decrypt_file KeyFile]\n\n").
+    io:format("~ts", [argparse:help(cli())]),
+    erlang:halt(0).
 
 install(Opts) ->
     install(Opts, ".").
@@ -866,6 +982,9 @@ run_test(StartOpt) when is_tuple(StartOpt) ->
     run_test([StartOpt]);
 
 run_test(StartOpts) when is_list(StartOpts) ->
+    maps:from_list(StartOpts);
+
+run_test(StartOpts) when is_map(StartOpts) ->
     CTPid = spawn(run_test1_fun(StartOpts)),
     Ref = monitor(process, CTPid),
     receive
@@ -883,8 +1002,8 @@ run_test1_fun(StartOpts) ->
             run_test1(StartOpts)
     end.
 
-run_test1(StartOpts) when is_list(StartOpts) ->
-    case proplists:get_value(refresh_logs, StartOpts) of
+run_test1(StartOpts) when is_map(StartOpts) ->
+    case maps:get(refresh_logs, StartOpts, undefined) of
 	undefined ->
 	    Tracing = start_trace(StartOpts),
 	    {ok,Cwd} = file:get_cwd(),
@@ -911,7 +1030,7 @@ run_test1(StartOpts) when is_list(StartOpts) ->
                                      all,
                                      StartOpts),
             application:set_env(common_test, keep_logs, KeepLogs),
-            CustomStylesheet = proplists:get_value(stylesheet, StartOpts),
+            CustomStylesheet = maps:get(stylesheet, StartOpts, undefined),
 	    ok = refresh_logs(?abs(RefreshDir), CustomStylesheet),
 	    exit(done)
     end.
@@ -951,7 +1070,7 @@ run_test2(StartOpts) ->
 
     %% event handlers
     EvHandlers =
-	case proplists:get_value(event_handler, StartOpts) of
+        case maps:get(event_handler, StartOpts, undefined) of
 	    undefined ->
 		[];
 	    H when is_atom(H) ->
@@ -1010,11 +1129,11 @@ run_test2(StartOpts) ->
 
     %% auto compile & include files
     {AutoCompile,Include} =
-	case proplists:get_value(auto_compile, StartOpts) of
+        case maps:get(auto_compile, StartOpts, undefined) of
 	    undefined ->
 		application:set_env(common_test, auto_compile, true),		
 		InclDirs =
-		    case proplists:get_value(include, StartOpts) of
+                    case maps:get(include, StartOpts, undefined) of
 			undefined ->
 			    [];
 			Incls when is_list(hd(Incls)) ->
@@ -1042,7 +1161,7 @@ run_test2(StartOpts) ->
 				   StartOpts),
 
     %% decrypt config file
-    case proplists:get_value(decrypt, StartOpts) of
+    case maps:get(decrypt, StartOpts, undefined) of
 	undefined ->
 	    application:unset_env(common_test, decrypt);
 	Key={key,_} ->
@@ -1053,7 +1172,7 @@ run_test2(StartOpts) ->
 
     %% basic html - used by ct_logs
     BasicHtml =
-	case proplists:get_value(basic_html, StartOpts) of
+        case maps:get(basic_html, StartOpts, undefined) of
 	    undefined ->
 		application:set_env(common_test, basic_html, false),
 		undefined;
@@ -1063,7 +1182,7 @@ run_test2(StartOpts) ->
     end,
     %% esc_chars - used by ct_logs
     EscChars =
-	case proplists:get_value(esc_chars, StartOpts) of
+        case maps:get(esc_chars, StartOpts, undefined) of
 	    undefined ->
 		application:set_env(common_test, esc_chars, true),
 		undefined;
@@ -1072,7 +1191,7 @@ run_test2(StartOpts) ->
 		EscCharsBool		
     end,
     %% disable_log_cache - used by ct_logs
-    case proplists:get_value(disable_log_cache, StartOpts) of
+    case maps:get(disable_log_cache, StartOpts, undefined) of
 	undefined ->
 	    application:set_env(common_test, disable_log_cache, false);
 	DisableCacheBool ->
@@ -1110,14 +1229,14 @@ run_test2(StartOpts) ->
 		 starter = ct},
 
     %% test specification
-    case proplists:get_value(spec, StartOpts) of
+    case maps:get(spec, StartOpts, undefined) of
 	undefined ->
-	    case lists:keysearch(prepared_tests, 1, StartOpts) of
-		{value,{_,{Run,Skip},Specs}} ->	% use prepared tests
-		    run_prepared(Run, Skip, Opts#opts{testspec_files = Specs},
-				 StartOpts);
+            case maps:get(prepared_tests, StartOpts, false) of
 		false ->
-		    run_dir(Opts, StartOpts)
+		    run_dir(Opts, StartOpts);
+		{_,{Run,Skip},Specs} ->	% use prepared tests
+		    run_prepared(Run, Skip, Opts#opts{testspec_files = Specs},
+				 StartOpts)
 	    end;
 	Specs ->
 	    Relaxed = get_start_opt(allow_user_terms, value, false, StartOpts),
@@ -1257,10 +1376,10 @@ run_dir(Opts = #opts{logdir = LogDir,
 	ok -> ok;
 	{error,_IReason} = IError -> exit(IError)
     end,
-    case {proplists:get_value(dir, StartOpts),
-	  proplists:get_value(suite, StartOpts),
-	  groups_and_cases(proplists:get_value(group, StartOpts),
-			   proplists:get_value(testcase, StartOpts))} of
+    case {maps:get(dir, StartOpts, undefined),
+          maps:get(suite, StartOpts, undefined),
+	  groups_and_cases(maps:get(group, StartOpts),
+			   maps:get(testcase, StartOpts))} of
 	%% flag specified without data
 	{_,_,Error={error,_}} ->
 	    Error;
@@ -1776,7 +1895,7 @@ compile_and_run(Tests, Skip, Opts, Args) ->
 	    
 	    try final_tests(Tests,Skip,SavedErrors) of
 		{Tests1,Skip1} ->	    
-		    ReleaseSh = proplists:get_value(release_shell, Args),
+		    ReleaseSh = maps:get(release_shell, Args, undefined),
 		    ct_util:set_testdata({release_shell,ReleaseSh}),
 		    TestResult = 
 			possibly_spawn(ReleaseSh == true, Tests1, Skip1, Opts),
@@ -2815,70 +2934,48 @@ log_ts_names(Specs) ->
     ct_logs:log("Test Specification file(s)", "~ts",
 		[lists:flatten(List)]).
 
-merge_arguments(Args) ->
-    merge_arguments(Args, []).
 
-merge_arguments([LogDir={logdir,_}|Args], Merged) ->
-    merge_arguments(Args, handle_arg(replace, LogDir, Merged));
-
-merge_arguments([CoverFile={cover,_}|Args], Merged) ->
-    merge_arguments(Args, handle_arg(replace, CoverFile, Merged));
-
-merge_arguments([CoverStop={cover_stop,_}|Args], Merged) ->
-    merge_arguments(Args, handle_arg(replace, CoverStop, Merged));
-
-merge_arguments([{'case',TC}|Args], Merged) ->
-    merge_arguments(Args, handle_arg(merge, {testcase,TC}, Merged));
-
-merge_arguments([Arg|Args], Merged) ->
-    merge_arguments(Args, handle_arg(merge, Arg, Merged));
-
-merge_arguments([], Merged) ->
-    Merged.
-
-handle_arg(replace, {Key,Elems}, [{Key,_}|Merged]) ->
-    [{Key,Elems}|Merged];
-handle_arg(merge, {event_handler_init,Elems}, [{event_handler_init,PrevElems}|Merged]) ->
-    [{event_handler_init,PrevElems++["add"|Elems]}|Merged];
-handle_arg(merge, {userconfig,Elems}, [{userconfig,PrevElems}|Merged]) ->
-    [{userconfig,PrevElems++["add"|Elems]}|Merged];
-handle_arg(merge, {Key,Elems}, [{Key,PrevElems}|Merged]) ->
-    [{Key,PrevElems++Elems}|Merged];
-handle_arg(Op, Arg, [Other|Merged]) ->
-    [Other|handle_arg(Op, Arg, Merged)];
-handle_arg(_,Arg,[]) ->
-    [Arg].
+% XXX: OBSOLETE, but check `add`
+% handle_arg(replace, {Key,Elems}, [{Key,_}|Merged]) ->
+%     [{Key,Elems}|Merged];
+% handle_arg(merge, {event_handler_init,Elems}, [{event_handler_init,PrevElems}|Merged]) ->
+%     [{event_handler_init,PrevElems++["add"|Elems]}|Merged];
+% handle_arg(merge, {userconfig,Elems}, [{userconfig,PrevElems}|Merged]) ->
+%     [{userconfig,PrevElems++["add"|Elems]}|Merged];
+% handle_arg(merge, {Key,Elems}, [{Key,PrevElems}|Merged]) ->
+%     [{Key,PrevElems++Elems}|Merged];
+% handle_arg(Op, Arg, [Other|Merged]) ->
+%     [Other|handle_arg(Op, Arg, Merged)];
+% handle_arg(_,Arg,[]) ->
+%     [Arg].
 
 get_start_opt(Key, IfExists, Args) ->
     get_start_opt(Key, IfExists, undefined, Args).
 
 get_start_opt(Key, IfExists, IfNotExists, Args) ->
-    try try_get_start_opt(Key, IfExists, IfNotExists, Args) of
-	Result ->
-	    Result
-    catch
-	error:_ ->
-	    exit({user_error,{bad_argument,Key}})
-    end.
+    try_get_start_opt(Key, IfExists, IfNotExists, Args).
+    % try try_get_start_opt(Key, IfExists, IfNotExists, Args) of
+    %     Result ->
+    %         Result
+    % catch
+    %     error:_ ->
+    %         exit({user_error,{bad_argument,Key}})
+    % end.
 
 try_get_start_opt(Key, IfExists, IfNotExists, Args) ->
-    case lists:keysearch(Key, 1, Args) of
-	{value,{Key,Val}} when is_function(IfExists) ->
-	    IfExists(Val);
-	{value,{Key,Val}} when IfExists == value ->
+    case maps:find(Key, Args) of
+        {ok, Val} when is_function(IfExists) ->
+            IfExists(Val);
+        {ok, Val} when IfExists == value ->
 	    Val;
-	{value,{Key,_Val}} ->
+	{ok, _Val} ->
 	    IfExists;
 	_ ->
 	    IfNotExists
     end.
 
 ct_hooks_args2opts(Args) ->
-    lists:foldl(fun({ct_hooks,Hooks}, Acc) ->
-			ct_hooks_args2opts(Hooks,Acc);
-		   (_,Acc) ->
-			Acc
-		end,[],Args).
+    ct_hooks_args2opts(Args, []).
 
 ct_hooks_args2opts([CTH,Arg,Prio,"and"| Rest],Acc) when Arg /= "and" ->
     ct_hooks_args2opts(Rest,[{list_to_atom(CTH),
@@ -2908,50 +3005,51 @@ parse_cth_args(String) ->
 	    String
     end.
 
-event_handler_args2opts(Args) ->
-    case proplists:get_value(event_handler, Args) of
-	undefined ->
-	    event_handler_args2opts([], Args);
-	EHs ->
-	    event_handler_args2opts([{list_to_atom(EH),[]} || EH <- EHs], Args)
-    end.
-event_handler_args2opts(Default, Args) ->
-    case proplists:get_value(event_handler_init, Args) of
-	undefined ->
-	    Default;
-	EHs ->
-	    event_handler_init_args2opts(EHs)
-    end.
-event_handler_init_args2opts([EH, Arg, "and" | EHs]) ->
-    [{list_to_atom(EH),lists:flatten(io_lib:format("~ts",[Arg]))} |
-     event_handler_init_args2opts(EHs)];
-event_handler_init_args2opts([EH, Arg]) ->
-    [{list_to_atom(EH),lists:flatten(io_lib:format("~ts",[Arg]))}];
-event_handler_init_args2opts([]) ->
-    [].
-
-verbosity_args2opts(Args) ->
-    case proplists:get_value(verbosity, Args) of
-	undefined ->
-	    [];
-	VArgs ->	
-	    GetVLvls =
-		fun("and", {new,SoFar}) when is_list(SoFar) ->
-			{new,SoFar};
-		   ("and", {Lvl,SoFar}) when is_list(SoFar) -> 
-			{new,[{'$unspecified',list_to_integer(Lvl)} | SoFar]};
-		   (CatOrLvl, {new,SoFar}) when is_list(SoFar) -> 
-			{CatOrLvl,SoFar};
-		   (Lvl, {Cat,SoFar}) ->
-			{new,[{list_to_atom(Cat),list_to_integer(Lvl)} | SoFar]}
-		end,
-		case lists:foldl(GetVLvls, {new,[]}, VArgs) of
-		    {new,Parsed} ->
-			Parsed;
-		    {Lvl,Parsed} ->
-			[{'$unspecified',list_to_integer(Lvl)} | Parsed]
-		end
-    end.
+% XXX: add me to parser above
+% event_handler_args2opts(Args) ->
+%     case proplists:get_value(event_handler, Args) of
+% 	undefined ->
+% 	    event_handler_args2opts([], Args);
+% 	EHs ->
+% 	    event_handler_args2opts([{list_to_atom(EH),[]} || EH <- EHs], Args)
+%     end.
+% event_handler_args2opts(Default, Args) ->
+%     case proplists:get_value(event_handler_init, Args) of
+% 	undefined ->
+% 	    Default;
+% 	EHs ->
+% 	    event_handler_init_args2opts(EHs)
+%     end.
+% event_handler_init_args2opts([EH, Arg, "and" | EHs]) ->
+%     [{list_to_atom(EH),lists:flatten(io_lib:format("~ts",[Arg]))} |
+%      event_handler_init_args2opts(EHs)];
+% event_handler_init_args2opts([EH, Arg]) ->
+%     [{list_to_atom(EH),lists:flatten(io_lib:format("~ts",[Arg]))}];
+% event_handler_init_args2opts([]) ->
+%     [].
+% 
+% verbosity_args2opts(Args) ->
+%     case proplists:get_value(verbosity, Args) of
+% 	undefined ->
+% 	    [];
+% 	VArgs ->	
+% 	    GetVLvls =
+% 		fun("and", {new,SoFar}) when is_list(SoFar) ->
+% 			{new,SoFar};
+% 		   ("and", {Lvl,SoFar}) when is_list(SoFar) -> 
+% 			{new,[{'$unspecified',list_to_integer(Lvl)} | SoFar]};
+% 		   (CatOrLvl, {new,SoFar}) when is_list(SoFar) -> 
+% 			{CatOrLvl,SoFar};
+% 		   (Lvl, {Cat,SoFar}) ->
+% 			{new,[{list_to_atom(Cat),list_to_integer(Lvl)} | SoFar]}
+% 		end,
+% 		case lists:foldl(GetVLvls, {new,[]}, VArgs) of
+% 		    {new,Parsed} ->
+% 			Parsed;
+% 		    {Lvl,Parsed} ->
+% 			[{'$unspecified',list_to_integer(Lvl)} | Parsed]
+% 		end
+%     end.
 
 add_verbosity_defaults(VLvls) ->
     case {proplists:get_value('$unspecified', VLvls),
@@ -2972,7 +3070,8 @@ add_verbosity_defaults(VLvls) ->
 %% function is only used for arguments "pre run_test erl_args", the order
 %% relative dirs "post run_test erl_args" is not kept!
 rel_to_abs(CtArgs) ->
-    {PA,PZ} = get_pa_pz(CtArgs, [], []),
+    PA = maps:get(path_add_head, CtArgs, []),
+    PZ = maps:get(path_add_tail, CtArgs, []),
     _ = [begin
 	 Dir = rm_trailing_slash(D),
 	 Abs = make_abs(Dir),
@@ -3006,15 +3105,6 @@ rel_to_abs(CtArgs) ->
 rm_trailing_slash(Dir) ->
     filename:join(filename:split(Dir)).
 
-get_pa_pz([{pa,Dirs} | Args], PA, PZ) ->
-    get_pa_pz(Args, PA ++ Dirs, PZ);
-get_pa_pz([{pz,Dirs} | Args], PA, PZ) ->
-    get_pa_pz(Args, PA, PZ ++ Dirs);
-get_pa_pz([_ | Args], PA, PZ) ->
-    get_pa_pz(Args, PA, PZ);
-get_pa_pz([], PA, PZ) ->
-    {PA,PZ}.
-
 make_abs(RelDir) ->
     Tokens = filename:split(filename:absname(RelDir)),
     filename:join(lists:reverse(make_abs1(Tokens, []))).
@@ -3032,7 +3122,7 @@ make_abs1([], Path) ->
 %% to ct_run start arguments (on the init arguments format) -
 %% this is useful mainly for testing the ct_run start functions.
 opts2args(EnvStartOpts) ->
-    lists:flatmap(fun({exit_status,ExitStatusOpt}) when is_atom(ExitStatusOpt) ->
+    Props = lists:flatmap(fun({exit_status,ExitStatusOpt}) when is_atom(ExitStatusOpt) ->
 			  [{exit_status,[atom_to_list(ExitStatusOpt)]}];
 		     ({halt_with,{HaltM,HaltF}}) ->
 			  [{halt_with,[atom_to_list(HaltM),
@@ -3183,7 +3273,9 @@ opts2args(EnvStartOpts) ->
 			  [{Opt,[S]}];
 		     (Opt) ->
 			  Opt
-		  end, EnvStartOpts).
+		  end, EnvStartOpts),
+    maps:from_list(Props).
+
 
 locate_test_dir(Dir, Suite) ->
     TestDir = case ct_util:is_test_dir(Dir) of
@@ -3242,9 +3334,9 @@ get_all_testcases(Suite) ->
 %% calls during test run. Expected terms in TraceSpec:
 %% {m,Mod} or {f,Mod,Func}.
 start_trace(Args) ->
-    case lists:keysearch(ct_trace,1,Args) of
-	{value,{ct_trace,File}} ->
-	    TraceSpec = delistify(File),
+    case Args of
+        #{ct_trace := Path} ->
+	    TraceSpec = delistify(Path),
 	    case file:consult(TraceSpec) of
 		{ok,Terms} ->
 		    case catch do_trace(Terms) of
@@ -3260,7 +3352,7 @@ start_trace(Args) ->
 			      [file:format_error(Error)]),
 		    false
 	    end;
-	false ->
+	_ ->
 	    false		
     end.
 
@@ -3294,10 +3386,10 @@ stop_trace(true) ->
 stop_trace(false) ->
     ok.
 
-list_to_number(S) ->
-    try list_to_integer(S)
-    catch error:badarg -> list_to_float(S)
-    end.
+% list_to_number(S) ->
+%     try list_to_integer(S)
+%     catch error:badarg -> list_to_float(S)
+%     end.
 
 ensure_atom(Atom) when is_atom(Atom) ->
     Atom;
